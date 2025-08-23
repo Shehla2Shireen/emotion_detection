@@ -1,0 +1,14 @@
+fastapi
+uvicorn
+pillow
+numpy
+opencv-python
+tensorflow>=2.10,<2.16
+keras==2.10.0
+python-multipart
+requests
+streamlit
+requests
+python-multipart
+
+pip install streamlit-webrtc opencv-python-headless 
