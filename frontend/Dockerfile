@@ -19,11 +19,11 @@ RUN pip install --no-cache-dir --upgrade pip \
     && pip install --no-cache-dir -r requirements.txt \
     && pip install streamlit requests pillow
 
-# Copy frontend code only
-COPY frontend ./frontend
+# Copy code (everything in frontend folder)
+COPY . .
 
 # Expose Streamlit port
 EXPOSE 8501
 
 # Start Streamlit app
-CMD ["streamlit", "run", "frontend/app.py", "--server.port", "8501", "--server.address", "0.0.0.0"]
+CMD ["streamlit", "run", "app.py", "--server.port", "8501", "--server.address", "0.0.0.0"]
