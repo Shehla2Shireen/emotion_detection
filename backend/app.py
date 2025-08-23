@@ -1,4 +1,37 @@
 # backend/app.py
+import os
+from google.cloud import storage
+import tensorflow as tf
+
+BUCKET_NAME = "emotion-model-bucket"
+MODEL_PATH = "model-hopeful-meadow-1v12"
+LOCAL_MODEL_DIR = f"backend/artifacts/{MODEL_PATH}"
+
+def download_model_from_gcs():
+    if os.path.exists(LOCAL_MODEL_DIR):
+        print("Model already exists locally.")
+        return
+
+    os.makedirs(LOCAL_MODEL_DIR, exist_ok=True)
+    client = storage.Client()
+    bucket = client.bucket(BUCKET_NAME)
+    blobs = bucket.list_blobs(prefix=MODEL_PATH)
+    for blob in blobs:
+        destination = os.path.join("backend/artifacts", blob.name)
+        os.makedirs(os.path.dirname(destination), exist_ok=True)
+        blob.download_to_filename(destination)
+        print(f"Downloaded {blob.name} to {destination}")
+
+# Call before loading model
+download_model_from_gcs()
+
+# Load model
+artifact_dir = LOCAL_MODEL_DIR
+model = tf.saved_model.load(artifact_dir)
+infer = model.signatures["serving_default"]
+
+
+
 import io
 import numpy as np
 import tensorflow as tf
