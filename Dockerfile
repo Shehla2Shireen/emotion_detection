@@ -30,4 +30,4 @@ RUN apt-get update && apt-get install -y tini && rm -rf /var/lib/apt/lists/*
 
 # Start both backend and frontend
 ENTRYPOINT ["/usr/bin/tini", "--"]
-CMD sh -c "uvicorn backend.app:app --host 0.0.0.0 --port 8000 & streamlit run frontend/app.py"
+CMD sh -c "uvicorn backend.app:app --host 0.0.0.0 --port $PORT & streamlit run frontend/app.py"
