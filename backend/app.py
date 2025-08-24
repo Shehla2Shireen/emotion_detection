@@ -1,27 +1,12 @@
-# # backend/app.py
-
 import os
-import numpy as np
 from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from PIL import Image, ImageFilter
 import cv2
-import logging
+import numpy as np
 
-# Set up logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+app = FastAPI(title="Emotion Detection API")
 
-# Get port from environment variable
-port = int(os.environ.get("PORT", 8080))
-logger.info(f"Server starting on port: {port}")
-
-# -------------------------------
-# FastAPI setup
-# -------------------------------
-app = FastAPI(title="Emotion Detection API", version="1.0.0")
-
-# Allow frontend requests
+# CORS middleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -30,136 +15,39 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Emotion labels
-emotion_labels = ['Angry', 'Disgust', 'Fear', 'Happy', 'Sad', 'Surprise', 'Neutral']
-
-# -------------------------------
-# Face detection - Download Haar cascade if missing
-# -------------------------------
-cascade_path = os.path.join(os.path.dirname(__file__), "haarcascade_frontalface_default.xml")
-
-# Download Haar cascade if not exists
-if not os.path.exists(cascade_path):
-    logger.warning("Haar cascade file not found, downloading...")
-    import urllib.request
-    cascade_url = "https://raw.githubusercontent.com/opencv/opencv/master/data/haarcascades/haarcascade_frontalface_default.xml"
-    urllib.request.urlretrieve(cascade_url, cascade_path)
-
-face_cascade = cv2.CascadeClassifier(cascade_path)
-if face_cascade.empty():
-    raise RuntimeError(f"Failed to load Haar Cascade from {cascade_path}")
-
-# -------------------------------
-# Health check endpoints
-# -------------------------------
+# Health check endpoint
 @app.get("/")
 async def root():
-    return {
-        "message": "Emotion Detection API",
-        "status": "running",
-        "model_loaded": False,
-        "note": "Model download excluded for testing"
-    }
+    return {"message": "Emotion Detection API is running!"}
 
 @app.get("/health")
 async def health():
-    return {"status": "healthy", "model_ready": False}
+    return {"status": "healthy"}
 
+# Simple test endpoint
 @app.get("/test")
-async def test_endpoint():
-    return {
-        "message": "Backend is working!",
-        "endpoints": {
-            "health": "/health",
-            "root": "/",
-            "predict": "/predict (POST)"
-        }
-    }
+async def test():
+    return {"message": "Backend is working!", "version": "1.0"}
 
-# -------------------------------
-# Mock Predict endpoint (without model)
-# -------------------------------
+# Mock predict endpoint (will work without model)
 @app.post("/predict")
 async def predict(file: UploadFile = File(...)):
     try:
-        if not file.content_type.startswith("image/"):
-            raise HTTPException(status_code=400, detail="File must be an image")
-
-        # Read image
-        image_bytes = await file.read()
-        np_arr = np.frombuffer(image_bytes, np.uint8)
-        img = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
-
-        if img is None:
-            raise HTTPException(status_code=400, detail="Invalid image file")
-
-        # Convert to grayscale for face detection
-        gray_img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        faces = face_cascade.detectMultiScale(gray_img, scaleFactor=1.1, minNeighbors=5, minSize=(30, 30))
-
-        if len(faces) == 0:
-            return {
-                "emotion": "No face detected", 
-                "confidence": 0.0, 
-                "all_predictions": {},
-                "note": "Model not loaded - this is a mock response"
-            }
-
-        # If face is detected, return mock prediction
-        x, y, w, h = faces[0]
-        
-        # Mock prediction response
-        result = {
-            "emotion": "Happy",  # Mock emotion
-            "confidence": 85.5,  # Mock confidence
-            "all_predictions": {
-                "Angry": 0.1,
-                "Disgust": 0.05,
-                "Fear": 0.05,
-                "Happy": 0.85,
-                "Sad": 0.02,
-                "Surprise": 0.01,
-                "Neutral": 0.02
-            },
-            "note": "This is a mock response - model not loaded"
-        }
-
-        return result
-
-    except Exception as e:
-        logger.error(f"Error processing image: {e}")
-        raise HTTPException(status_code=500, detail=f"Error processing image: {str(e)}")
-
-# -------------------------------
-# Additional test endpoint for face detection only
-# -------------------------------
-@app.post("/detect-face")
-async def detect_face(file: UploadFile = File(...)):
-    """Endpoint to test only face detection without prediction"""
-    try:
-        if not file.content_type.startswith("image/"):
-            raise HTTPException(status_code=400, detail="File must be an image")
-
-        image_bytes = await file.read()
-        np_arr = np.frombuffer(image_bytes, np.uint8)
-        img = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
-
-        if img is None:
-            raise HTTPException(status_code=400, detail="Invalid image file")
-
-        gray_img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        faces = face_cascade.detectMultiScale(gray_img, scaleFactor=1.1, minNeighbors=5, minSize=(30, 30))
-
         return {
-            "faces_detected": len(faces),
-            "face_coordinates": [{"x": int(x), "y": int(y), "width": int(w), "height": int(h)} for (x, y, w, h) in faces],
-            "message": "Face detection working correctly"
+            "emotion": "Happy",
+            "confidence": 85.5,
+            "all_predictions": {
+                "Angry": 0.1, "Disgust": 0.05, "Fear": 0.05,
+                "Happy": 0.85, "Sad": 0.02, "Surprise": 0.01, "Neutral": 0.02
+            },
+            "note": "Mock response - real model not loaded"
         }
-
     except Exception as e:
-        logger.error(f"Error in face detection: {e}")
-        raise HTTPException(status_code=500, detail=f"Error in face detection: {str(e)}")
-    
+        raise HTTPException(status_code=500, detail=str(e))
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))
 
 
 
