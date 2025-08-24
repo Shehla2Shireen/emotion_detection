@@ -51,11 +51,11 @@ if uploaded_file is not None:
                 st.error(f"Request failed: {e}")
 
 # This ensures Streamlit uses the correct port when run directly
-if __name__ == "__main__":
-    # This is for local development only
-    # Cloud Run will use the CMD from Dockerfile
-    import streamlit.web.bootstrap as bootstrap
-    bootstrap.run("frontend/app.py", "", [], {})
+# if __name__ == "__main__":
+#     # This is for local development only
+#     # Cloud Run will use the CMD from Dockerfile
+#     import streamlit.web.bootstrap as bootstrap
+#     bootstrap.run("frontend/app.py", "", [], {})
 
 # import streamlit as st
 # import cv2
