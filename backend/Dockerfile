@@ -22,4 +22,7 @@ COPY backend ./backend
 EXPOSE 8080
 
 # Run FastAPI app (must listen on $PORT for Cloud Run)
-CMD ["uvicorn", "backend.app:app", "--host", "0.0.0.0", "--port", "${PORT}"]
+# CMD ["uvicorn", "backend.app:app", "--host", "0.0.0.0", "--port", "${PORT}"]
+# Run FastAPI app (must listen on $PORT for Cloud Run)
+CMD ["sh", "-c", "uvicorn backend.app:app --host 0.0.0.0 --port $PORT"]
+
