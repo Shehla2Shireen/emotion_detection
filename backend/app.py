@@ -1,53 +1,53 @@
-import os
-from fastapi import FastAPI, File, UploadFile, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
-import cv2
-import numpy as np
+# import os
+# from fastapi import FastAPI, File, UploadFile, HTTPException
+# from fastapi.middleware.cors import CORSMiddleware
+# import cv2
+# import numpy as np
 
-app = FastAPI(title="Emotion Detection API")
+# app = FastAPI(title="Emotion Detection API")
 
-# CORS middleware
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# # CORS middleware
+# app.add_middleware(
+#     CORSMiddleware,
+#     allow_origins=["*"],
+#     allow_credentials=True,
+#     allow_methods=["*"],
+#     allow_headers=["*"],
+# )
 
-# Health check endpoint
-@app.get("/")
-async def root():
-    return {"message": "Emotion Detection API is running!"}
+# # Health check endpoint
+# @app.get("/")
+# async def root():
+#     return {"message": "Emotion Detection API is running!"}
 
-@app.get("/health")
-async def health():
-    return {"status": "healthy"}
+# @app.get("/health")
+# async def health():
+#     return {"status": "healthy"}
 
-# Simple test endpoint
-@app.get("/test")
-async def test():
-    return {"message": "Backend is working!", "version": "1.0"}
+# # Simple test endpoint
+# @app.get("/test")
+# async def test():
+#     return {"message": "Backend is working!", "version": "1.0"}
 
-# Mock predict endpoint (will work without model)
-@app.post("/predict")
-async def predict(file: UploadFile = File(...)):
-    try:
-        return {
-            "emotion": "Happy",
-            "confidence": 85.5,
-            "all_predictions": {
-                "Angry": 0.1, "Disgust": 0.05, "Fear": 0.05,
-                "Happy": 0.85, "Sad": 0.02, "Surprise": 0.01, "Neutral": 0.02
-            },
-            "note": "Mock response - real model not loaded"
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+# # Mock predict endpoint (will work without model)
+# @app.post("/predict")
+# async def predict(file: UploadFile = File(...)):
+#     try:
+#         return {
+#             "emotion": "Happy",
+#             "confidence": 85.5,
+#             "all_predictions": {
+#                 "Angry": 0.1, "Disgust": 0.05, "Fear": 0.05,
+#                 "Happy": 0.85, "Sad": 0.02, "Surprise": 0.01, "Neutral": 0.02
+#             },
+#             "note": "Mock response - real model not loaded"
+#         }
+#     except Exception as e:
+#         raise HTTPException(status_code=500, detail=str(e))
 
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))
+# if __name__ == "__main__":
+#     import uvicorn
+#     uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))
 
 
 
@@ -65,134 +65,134 @@ if __name__ == "__main__":
 
 
     
-# import os
-# import zipfile
-# import gdown
-# import tensorflow as tf
-# import io
-# import numpy as np
-# from fastapi import FastAPI, File, UploadFile, HTTPException
-# from fastapi.middleware.cors import CORSMiddleware
-# from PIL import Image, ImageFilter
-# import cv2
+import os
+import zipfile
+import gdown
+import tensorflow as tf
+import io
+import numpy as np
+from fastapi import FastAPI, File, UploadFile, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from PIL import Image, ImageFilter
+import cv2
 
 
-# # Get port from environment variable (optional, for info)
-# port = int(os.environ.get("PORT", 8080))
-# print(f"Server starting on port: {port}")
-# # -------------------------------
-# # Google Drive model download
-# # -------------------------------
+# Get port from environment variable (optional, for info)
+port = int(os.environ.get("PORT", 8080))
+print(f"Server starting on port: {port}")
+# -------------------------------
+# Google Drive model download
+# -------------------------------
 
-# # Google Drive file ID for the zip of model-hopeful-meadow-1v12
-# # Replace this with your own file ID
-# GOOGLE_DRIVE_FILE_ID = "1I6jM9cFJ9zfwvOYHZNChcvQqjhQ4vO-M"
-# LOCAL_MODEL_DIR = "artifacts/model-hopeful-meadow-1v12"
-# ZIP_PATH = "artifacts/model.zip"
+# Google Drive file ID for the zip of model-hopeful-meadow-1v12
+# Replace this with your own file ID
+GOOGLE_DRIVE_FILE_ID = "1I6jM9cFJ9zfwvOYHZNChcvQqjhQ4vO-M"
+LOCAL_MODEL_DIR = "artifacts/model-hopeful-meadow-1v12"
+ZIP_PATH = "artifacts/model.zip"
 
-# def download_model_from_drive():
-#     if os.path.exists(LOCAL_MODEL_DIR):
-#         print("Model already exists locally.")
-#         return
+def download_model_from_drive():
+    if os.path.exists(LOCAL_MODEL_DIR):
+        print("Model already exists locally.")
+        return
 
-#     os.makedirs("artifacts", exist_ok=True)
+    os.makedirs("artifacts", exist_ok=True)
 
-#     # Construct download URL
-#     # https://drive.google.com/file/d/1I6jM9cFJ9zfwvOYHZNChcvQqjhQ4vO-M/view
-#     url = f"https://drive.google.com/uc?id={GOOGLE_DRIVE_FILE_ID}"
-#     print("Downloading model from Google Drive...")
-#     gdown.download(url, ZIP_PATH, quiet=False)
+    # Construct download URL
+    # https://drive.google.com/file/d/1I6jM9cFJ9zfwvOYHZNChcvQqjhQ4vO-M/view
+    url = f"https://drive.google.com/uc?id={GOOGLE_DRIVE_FILE_ID}"
+    print("Downloading model from Google Drive...")
+    gdown.download(url, ZIP_PATH, quiet=False)
 
-#     # Unzip
-#     print("Extracting model...")
-#     with zipfile.ZipFile(ZIP_PATH, 'r') as zip_ref:
-#         zip_ref.extractall("artifacts")
+    # Unzip
+    print("Extracting model...")
+    with zipfile.ZipFile(ZIP_PATH, 'r') as zip_ref:
+        zip_ref.extractall("artifacts")
 
-#     os.remove(ZIP_PATH)
-#     print("Model ready at", LOCAL_MODEL_DIR)
+    os.remove(ZIP_PATH)
+    print("Model ready at", LOCAL_MODEL_DIR)
 
-# # Call before loading model
-# download_model_from_drive()
+# Call before loading model
+download_model_from_drive()
 
-# # -------------------------------
-# # Load TensorFlow model
-# # -------------------------------
-# model = tf.saved_model.load(LOCAL_MODEL_DIR)
-# infer = model.signatures["serving_default"]
+# -------------------------------
+# Load TensorFlow model
+# -------------------------------
+model = tf.saved_model.load(LOCAL_MODEL_DIR)
+infer = model.signatures["serving_default"]
 
-# # -------------------------------
-# # FastAPI setup
-# # -------------------------------
-# app = FastAPI()
+# -------------------------------
+# FastAPI setup
+# -------------------------------
+app = FastAPI()
 
-# # Allow frontend requests
-# app.add_middleware(
-#     CORSMiddleware,
-#     allow_origins=["*"],  # adjust for frontend URL later
-#     allow_credentials=True,
-#     allow_methods=["*"],
-#     allow_headers=["*"],
-# )
+# Allow frontend requests
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # adjust for frontend URL later
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-# # Emotion labels
-# emotion_labels = ['Angry', 'Disgust', 'Fear', 'Happy', 'Sad', 'Surprise', 'Neutral']
+# Emotion labels
+emotion_labels = ['Angry', 'Disgust', 'Fear', 'Happy', 'Sad', 'Surprise', 'Neutral']
 
-# # -------------------------------
-# # Face detection
-# # -------------------------------
-# cascade_path = os.path.join(os.path.dirname(__file__), "haarcascade_frontalface_default.xml")
-# face_cascade = cv2.CascadeClassifier(cascade_path)
+# -------------------------------
+# Face detection
+# -------------------------------
+cascade_path = os.path.join(os.path.dirname(__file__), "haarcascade_frontalface_default.xml")
+face_cascade = cv2.CascadeClassifier(cascade_path)
 
-# if face_cascade.empty():
-#     raise RuntimeError(f"Failed to load Haar Cascade from {cascade_path}")
+if face_cascade.empty():
+    raise RuntimeError(f"Failed to load Haar Cascade from {cascade_path}")
 
-# # -------------------------------
-# # Predict endpoint
-# # -------------------------------
-# @app.post("/predict")
-# async def predict(file: UploadFile = File(...)):
-#     try:
-#         if not file.content_type.startswith("image/"):
-#             raise HTTPException(status_code=400, detail="File must be an image")
+# -------------------------------
+# Predict endpoint
+# -------------------------------
+@app.post("/predict")
+async def predict(file: UploadFile = File(...)):
+    try:
+        if not file.content_type.startswith("image/"):
+            raise HTTPException(status_code=400, detail="File must be an image")
 
-#         image_bytes = await file.read()
-#         np_arr = np.frombuffer(image_bytes, np.uint8)
-#         img = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
+        image_bytes = await file.read()
+        np_arr = np.frombuffer(image_bytes, np.uint8)
+        img = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
 
-#         if img is None:
-#             raise HTTPException(status_code=400, detail="Invalid image file")
+        if img is None:
+            raise HTTPException(status_code=400, detail="Invalid image file")
 
-#         gray_img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-#         faces = face_cascade.detectMultiScale(gray_img, scaleFactor=1.1, minNeighbors=5, minSize=(30, 30))
+        gray_img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        faces = face_cascade.detectMultiScale(gray_img, scaleFactor=1.1, minNeighbors=5, minSize=(30, 30))
 
-#         if len(faces) == 0:
-#             return {"emotion": "No face detected", "confidence": 0.0, "all_predictions": {}}
+        if len(faces) == 0:
+            return {"emotion": "No face detected", "confidence": 0.0, "all_predictions": {}}
 
-#         x, y, w, h = faces[0]
-#         face_img = gray_img[y:y+h, x:x+w]
-#         face_img_resized = cv2.resize(face_img, (48, 48))
+        x, y, w, h = faces[0]
+        face_img = gray_img[y:y+h, x:x+w]
+        face_img_resized = cv2.resize(face_img, (48, 48))
 
-#         pil_img = Image.fromarray(face_img_resized)
-#         sharpened_img = pil_img.filter(ImageFilter.UnsharpMask(radius=2, percent=150, threshold=3))
-#         sharpened_img = np.array(sharpened_img)
+        pil_img = Image.fromarray(face_img_resized)
+        sharpened_img = pil_img.filter(ImageFilter.UnsharpMask(radius=2, percent=150, threshold=3))
+        sharpened_img = np.array(sharpened_img)
 
-#         sharpened_img = sharpened_img.astype("float32") / 255.0
-#         sharpened_img = np.expand_dims(sharpened_img, axis=(0, -1))
+        sharpened_img = sharpened_img.astype("float32") / 255.0
+        sharpened_img = np.expand_dims(sharpened_img, axis=(0, -1))
 
-#         tensor_input = tf.convert_to_tensor(sharpened_img, dtype=tf.float32)
-#         outputs = infer(tf.constant(tensor_input))
+        tensor_input = tf.convert_to_tensor(sharpened_img, dtype=tf.float32)
+        outputs = infer(tf.constant(tensor_input))
 
-#         predictions = list(outputs.values())[0].numpy()
-#         predicted_class = int(np.argmax(predictions, axis=1)[0])
-#         predicted_prob = float(predictions[0][predicted_class])
+        predictions = list(outputs.values())[0].numpy()
+        predicted_class = int(np.argmax(predictions, axis=1)[0])
+        predicted_prob = float(predictions[0][predicted_class])
 
-#         result = {
-#             "emotion": emotion_labels[predicted_class],
-#             "confidence": round(predicted_prob * 100, 2),
-#             "all_predictions": {emotion_labels[i]: float(predictions[0][i]) for i in range(len(emotion_labels))}
-#         }
+        result = {
+            "emotion": emotion_labels[predicted_class],
+            "confidence": round(predicted_prob * 100, 2),
+            "all_predictions": {emotion_labels[i]: float(predictions[0][i]) for i in range(len(emotion_labels))}
+        }
 
-#         return result
+        return result
 
-#     except Exception as e:
-#         raise HTTPException(status_code=500, detail=f"Error processing image: {e}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error processing image: {e}")

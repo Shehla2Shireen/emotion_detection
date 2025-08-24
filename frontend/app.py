@@ -7,7 +7,11 @@ import os
 port = int(os.environ.get("PORT", 8080))
 
 # FastAPI backend URL - FIXED: Added /predict endpoint
-API_URL = "https://emotion-detection-f-612403936271.us-central1.run.app/predict"
+# API_URL = "https://emotion-detection-f-612403936271.us-central1.run.app/predict"
+# API_URL = "http://127.0.0.1:8000/predict"
+# API_URL = "http://emotion-backend:8080/predict"
+API_URL = "https://emotion-backend-334182526116.us-central1.run.app/predict"
+
 
 st.set_page_config(page_title="Emotion Detection", page_icon="😊", layout="centered")
 

@@ -8,18 +8,24 @@ ENV PORT=8080
 # Set working directory
 WORKDIR /app
 
+# Install system dependencies for OpenCV
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libgl1 \
+    libglib2.0-0 \
+ && rm -rf /var/lib/apt/lists/*
+
 # Copy requirements (from backend/)
 COPY backend/requirements.txt .
 
-# Install dependencies
+# Install Python dependencies
 RUN pip install --no-cache-dir --upgrade pip \
     && pip install --no-cache-dir -r requirements.txt
 
-# Copy backend code only
-COPY backend ./backend
+# Copy backend code
+COPY backend/ .
 
-# Expose Cloud Run port
-EXPOSE 8080
+# Expose app port
+EXPOSE ${PORT}
 
-# Run FastAPI app with environment variable substitution
-CMD uvicorn backend.app:app --host 0.0.0.0 --port $PORT
+# Run FastAPI app
+CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8080"]
