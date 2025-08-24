@@ -10,6 +10,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from PIL import Image, ImageFilter
 import cv2
 
+
+# Get port from environment variable (optional, for info)
+port = int(os.environ.get("PORT", 8080))
+print(f"Server starting on port: {port}")
 # -------------------------------
 # Google Drive model download
 # -------------------------------

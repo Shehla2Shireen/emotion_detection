@@ -3,6 +3,7 @@ FROM python:3.10-slim
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
+ENV PORT=8080
 
 # Set working directory
 WORKDIR /app
@@ -12,19 +13,13 @@ COPY backend/requirements.txt .
 
 # Install dependencies
 RUN pip install --no-cache-dir --upgrade pip \
-    && pip install --no-cache-dir -r requirements.txt \
-    && pip install uvicorn gunicorn
+    && pip install --no-cache-dir -r requirements.txt
 
 # Copy backend code only
 COPY backend ./backend
 
-# Expose Cloud Run port (default 8080, but Cloud Run sets $PORT dynamically)
+# Expose Cloud Run port
 EXPOSE 8080
 
-# Run FastAPI app (must listen on $PORT for Cloud Run)
-# CMD ["uvicorn", "backend.app:app", "--host", "0.0.0.0", "--port", "${PORT}"]
-# Run FastAPI app (must listen on $PORT for Cloud Run)
-CMD uvicorn backend.app:app --host 0.0.0.0 --port ${PORT:-8000}
-
-
-
+# Run FastAPI app with environment variable substitution
+CMD uvicorn backend.app:app --host 0.0.0.0 --port $PORT
