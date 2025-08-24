@@ -4,7 +4,7 @@ from PIL import Image
 
 # FastAPI backend URL
 # API_URL = "http://127.0.0.1:8000/predict"
-API_URL = "https://emotion-detection-b-612403936271.us-central1.run.app"
+API_URL = "https://emotion-detection-f-612403936271.us-central1.run.app" 
 
 st.set_page_config(page_title="Emotion Detection", page_icon="😊", layout="centered")
 
