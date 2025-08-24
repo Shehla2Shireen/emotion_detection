@@ -1,10 +1,13 @@
 import streamlit as st
 import requests
 from PIL import Image
+import os
 
-# FastAPI backend URL
-# API_URL = "http://127.0.0.1:8000/predict"
-API_URL = "https://emotion-detection-f-612403936271.us-central1.run.app" 
+# Get port from environment variable (for local testing)
+port = int(os.environ.get("PORT", 8080))
+
+# FastAPI backend URL - FIXED: Added /predict endpoint
+API_URL = "https://emotion-detection-f-612403936271.us-central1.run.app/predict"
 
 st.set_page_config(page_title="Emotion Detection", page_icon="😊", layout="centered")
 
@@ -47,6 +50,12 @@ if uploaded_file is not None:
             except Exception as e:
                 st.error(f"Request failed: {e}")
 
+# This ensures Streamlit uses the correct port when run directly
+if __name__ == "__main__":
+    # This is for local development only
+    # Cloud Run will use the CMD from Dockerfile
+    import streamlit.web.bootstrap as bootstrap
+    bootstrap.run("frontend/app.py", "", [], {})
 
 # import streamlit as st
 # import cv2
