@@ -24,6 +24,6 @@ EXPOSE 8080
 # Run FastAPI app (must listen on $PORT for Cloud Run)
 # CMD ["uvicorn", "backend.app:app", "--host", "0.0.0.0", "--port", "${PORT}"]
 # Run FastAPI app (must listen on $PORT for Cloud Run)
-CMD ["uvicorn", "backend.app:app", "--host", "0.0.0.0", "--port", "8080"]
+CMD uvicorn backend.app:app --host 0.0.0.0 --port ${PORT:-8080}
 
 
