@@ -3,7 +3,7 @@ FROM python:3.10-slim
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
-ENV PORT=8000
+ENV PORT=8080
 
 # Set working directory
 WORKDIR /app
@@ -19,7 +19,7 @@ RUN pip install --no-cache-dir --upgrade pip \
 COPY backend ./backend
 
 # Expose Cloud Run port
-EXPOSE 8000
+EXPOSE 8080
 
 # Run FastAPI app with environment variable substitution
 CMD uvicorn backend.app:app --host 0.0.0.0 --port $PORT
