@@ -15,7 +15,7 @@ from PIL import Image
 API_URL = "https://emotion-backend-334182526116.us-central1.run.app/predict"
 SEND_INTERVAL_SEC = 2.0
 ROLLING_WINDOW = 15
-EMOTIONS = ['Angry','Disgust','Fear','Happy','Sad','Surprise','Neutral']
+EMOTIONS = ['Angry','Happy','Sad','Surprise','Neutral']
 
 # =========================
 # STATE
