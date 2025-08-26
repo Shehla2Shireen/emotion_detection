@@ -11,11 +11,15 @@ from PIL import Image
 # =========================
 # CONFIG
 # =========================
-# API_URL = "http://host.docker.internal:5050/predict"
 API_URL = "https://emotion-backend-334182526116.us-central1.run.app/predict"
 SEND_INTERVAL_SEC = 2.0
 ROLLING_WINDOW = 15
-EMOTIONS = ['Angry','Disgust','Fear','Happy','Sad','Surprise','Neutral']
+
+# Original emotions from backend
+ORIGINAL_EMOTIONS = ['Angry','Disgust','Fear','Happy','Sad','Surprise','Neutral']
+# Map Disgust and Fear to Sad
+EMOTIONS = ['Angry','Happy','Sad','Surprise','Neutral']
+MAP_TO_SAD = {'Fear': 'Sad', 'Disgust': 'Sad'}
 
 # =========================
 # STATE
@@ -28,6 +32,9 @@ if "last_send_ts" not in st.session_state:
 # =========================
 # HELPERS
 # =========================
+def map_emotion(emotion: str) -> str:
+    return MAP_TO_SAD.get(emotion, emotion)
+
 def post_to_backend(img_bgr: np.ndarray):
     _, buf = cv2.imencode(".jpg", img_bgr)
     files = {"file": ("frame.jpg", io.BytesIO(buf.tobytes()), "image/jpeg")}
@@ -37,7 +44,11 @@ def post_to_backend(img_bgr: np.ndarray):
 
 def update_rollups(result):
     probs = result.get("all_predictions", {})
-    full = {e: float(probs.get(e, 0.0)) for e in EMOTIONS}
+    # Remap Disgust/Fear -> Sad
+    full = {e: 0.0 for e in EMOTIONS}
+    for k, v in probs.items():
+        mapped = map_emotion(k)
+        full[mapped] += float(v)
     st.session_state.history.append(full)
 
     avg = defaultdict(float)
@@ -55,7 +66,6 @@ def update_rollups(result):
 st.set_page_config(page_title="Emotion Detection", page_icon="😊", layout="wide")
 st.title("😊 Emotion Detection App")
 st.write("Upload an image or video. Emotions are shown alongside media in real-time.")
-
 st.markdown("---")
 
 # -------------------------
@@ -74,6 +84,7 @@ if uploaded_image is not None:
 
     try:
         result = post_to_backend(img_array)
+        result['emotion'] = map_emotion(result['emotion'])  # remap current emotion
         avg = update_rollups(result)
         with col2:
             st.success(f"Current: **{result['emotion']}** ({result['confidence']}%)")
@@ -114,11 +125,11 @@ if uploaded_video is not None:
         if now - st.session_state.last_send_ts >= SEND_INTERVAL_SEC:
             try:
                 result = post_to_backend(frame)
+                result['emotion'] = map_emotion(result['emotion'])
                 avg = update_rollups(result)
                 st.session_state.last_send_ts = now
                 emotion_text = f"{result['emotion']} ({result['confidence']}%)"
 
-                # Update sidebar stats
                 current_ph.success(f"Current: **{result['emotion']}** ({result['confidence']}%)")
                 sorted_avg = sorted(avg.items(), key=lambda kv: kv[1], reverse=True)
                 avg_ph.write(f"Rolling avg (last {len(st.session_state.history)} frames): **{sorted_avg[0][0]}** ({round(sorted_avg[0][1]*100,1)}%)")
@@ -131,7 +142,6 @@ if uploaded_video is not None:
         if 'emotion_text' in locals() and emotion_text:
             cv2.putText(frame, emotion_text, (10,30), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255,255,255), 2, cv2.LINE_AA)
 
-        # Show video frame with limited width
         video_ph.image(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB), channels="RGB", width=500)
         time.sleep(0.05)
 
@@ -147,63 +157,3 @@ if st.button("Reset rolling average"):
     avg_ph.empty()
     chart_ph.empty()
     st.info("Averages cleared.")
-
-
-
-
-# import streamlit as st
-# import requests
-# from PIL import Image
-# import os
-
-# # Get port from environment variable (for local testing)
-# port = int(os.environ.get("PORT", 8080))
-
-# # FastAPI backend URL - FIXED: Added /predict endpoint
-# # API_URL = "https://emotion-detection-f-612403936271.us-central1.run.app/predict"
-# # API_URL = "http://127.0.0.1:8000/predict"
-# # API_URL = "http://emotion-backend:8080/predict"
-# API_URL = "https://emotion-backend-334182526116.us-central1.run.app/predict"
-
-
-# st.set_page_config(page_title="Emotion Detection", page_icon="😊", layout="centered")
-
-# st.title("😊 Emotion Detection App")
-# st.write("Upload a face image and the model will predict the emotion.")
-
-# # Upload image
-# uploaded_file = st.file_uploader("Choose an image...", type=["jpg", "jpeg", "png"])
-
-# if uploaded_file is not None:
-#     # Show uploaded image
-#     image = Image.open(uploaded_file)
-#     st.image(image, caption="Uploaded Image", use_column_width=True)
-
-#     # Send file to FastAPI backend
-#     if st.button("Predict Emotion"):
-#         with st.spinner("Analyzing..."):
-#             try:
-#                 # Ensure file pointer at start & read bytes
-#                 uploaded_file.seek(0)
-#                 files = {
-#                     "file": (
-#                         uploaded_file.name,
-#                         uploaded_file.getvalue(),
-#                         uploaded_file.type or "image/jpeg"
-#                     )
-#                 }
-
-#                 response = requests.post(API_URL, files=files)
-
-#                 if response.status_code == 200:
-#                     result = response.json()
-#                     st.success(f"Predicted Emotion: {result['emotion']} 🎯")
-#                     st.write(f"Confidence: {result['confidence']}%")
-
-#                     st.subheader("All Predictions:")
-#                     st.json(result["all_predictions"])
-#                 else:
-#                     st.error(f"Error: {response.status_code} - {response.text}")
-#             except Exception as e:
-#                 st.error(f"Request failed: {e}")
-
