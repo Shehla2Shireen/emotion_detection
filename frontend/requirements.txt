@@ -5,3 +5,6 @@ streamlit-webrtc
 av
 aiortc
 opencv-python-headless
+
+sievedata
+mediapipe opencv-python
