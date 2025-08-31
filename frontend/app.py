@@ -11,7 +11,7 @@ from PIL import Image
 # =========================
 # CONFIG
 # =========================
-API_URL = "https://emotion-backend-334182526116.us-central1.run.app/predict"
+API_URL = "http://localhost:8000/predict"
 SEND_INTERVAL_SEC = 2.0
 ROLLING_WINDOW = 15
 
@@ -28,6 +28,8 @@ if "history" not in st.session_state:
     st.session_state.history = deque(maxlen=ROLLING_WINDOW)
 if "last_send_ts" not in st.session_state:
     st.session_state.last_send_ts = 0.0
+if "camera_active" not in st.session_state:
+    st.session_state.camera_active = False
 
 # =========================
 # HELPERS
@@ -38,7 +40,7 @@ def map_emotion(emotion: str) -> str:
 def post_to_backend(img_bgr: np.ndarray):
     _, buf = cv2.imencode(".jpg", img_bgr)
     files = {"file": ("frame.jpg", io.BytesIO(buf.tobytes()), "image/jpeg")}
-    r = requests.post(API_URL, files=files, timeout=30)
+    r = requests.post(API_URL, files=files, timeout=30, verify=False)
     r.raise_for_status()
     return r.json()
 
@@ -63,97 +65,111 @@ def update_rollups(result):
 # =========================
 # UI
 # =========================
-st.set_page_config(page_title="Emotion Detection", page_icon="😊", layout="wide")
-st.title("😊 Emotion Detection App")
-st.write("Upload an image or video. Emotions are shown alongside media in real-time.")
+st.set_page_config(page_title="Real-time Emotion Detection", page_icon="😊", layout="wide")
+st.title("😊 Real-time Emotion Detection App")
+st.write("This app captures images from your webcam every 2 seconds and analyzes emotions.")
 st.markdown("---")
 
 # -------------------------
-# IMAGE UPLOAD
+# WEBCAM CAPTURE
 # -------------------------
-st.subheader("Upload an Image")
-uploaded_image = st.file_uploader("Choose an image...", type=["jpg","jpeg","png"], key="img_upload")
+st.subheader("Webcam Emotion Detection")
 
-if uploaded_image is not None:
-    image = Image.open(uploaded_image).convert("RGB")
-    img_array = np.array(image)[:, :, ::-1]  # PIL to BGR
+# Start/Stop camera buttons
+col1, col2 = st.columns(2)
+with col1:
+    if st.button("Start Camera", disabled=st.session_state.camera_active):
+        st.session_state.camera_active = True
+        st.session_state.history.clear()  # Clear history when starting
+        st.rerun()
 
-    col1, col2 = st.columns([2,1])
-    with col1:
-        st.image(image, caption="Uploaded Image", width=300)
+with col2:
+    if st.button("Stop Camera", disabled=not st.session_state.camera_active):
+        st.session_state.camera_active = False
+        st.rerun()
 
-    try:
-        result = post_to_backend(img_array)
-        result['emotion'] = map_emotion(result['emotion'])  # remap current emotion
-        avg = update_rollups(result)
-        with col2:
-            st.success(f"Current: **{result['emotion']}** ({result['confidence']}%)")
-            sorted_avg = sorted(avg.items(), key=lambda kv: kv[1], reverse=True)
-            st.write(f"Rolling avg (last {len(st.session_state.history)} frames): **{sorted_avg[0][0]}** ({round(sorted_avg[0][1]*100,1)}%)")
-            st.bar_chart({k:[v] for k,v in avg.items()})
-    except Exception as e:
-        with col2:
-            st.error(f"Request failed: {e}")
-
-st.markdown("---")
-
-# -------------------------
-# VIDEO UPLOAD
-# -------------------------
-st.subheader("Upload a Video")
-uploaded_video = st.file_uploader("Choose a video...", type=["mp4","avi","mov"], key="vid_upload")
-
-if uploaded_video is not None:
-    tfile = tempfile.NamedTemporaryFile(delete=False)
-    tfile.write(uploaded_video.read())
-    cap = cv2.VideoCapture(tfile.name)
-
-    col1, col2 = st.columns([2,1])
-    video_ph = col1.empty()
-    current_ph = col2.empty()
-    avg_ph = col2.empty()
-    chart_ph = col2.empty()
-    error_ph = col2.empty()
-
-    while cap.isOpened():
-        ret, frame = cap.read()
-        if not ret:
-            break
-
-        # Overlay current emotion on video
-        now = time.time()
-        if now - st.session_state.last_send_ts >= SEND_INTERVAL_SEC:
-            try:
-                result = post_to_backend(frame)
-                result['emotion'] = map_emotion(result['emotion'])
-                avg = update_rollups(result)
-                st.session_state.last_send_ts = now
-                emotion_text = f"{result['emotion']} ({result['confidence']}%)"
-
-                current_ph.success(f"Current: **{result['emotion']}** ({result['confidence']}%)")
-                sorted_avg = sorted(avg.items(), key=lambda kv: kv[1], reverse=True)
-                avg_ph.write(f"Rolling avg (last {len(st.session_state.history)} frames): **{sorted_avg[0][0]}** ({round(sorted_avg[0][1]*100,1)}%)")
-                chart_ph.bar_chart({k:[v] for k,v in avg.items()})
-
-            except Exception as e:
-                error_ph.error(f"Request failed: {e}")
-                emotion_text = ""
-
-        if 'emotion_text' in locals() and emotion_text:
-            cv2.putText(frame, emotion_text, (10,30), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255,255,255), 2, cv2.LINE_AA)
-
-        video_ph.image(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB), channels="RGB", width=500)
-        time.sleep(0.05)
-
-    cap.release()
+if st.session_state.camera_active:
+    # Initialize webcam
+    cap = cv2.VideoCapture(0)
+    
+    if not cap.isOpened():
+        st.error("Cannot access webcam. Please check permissions.")
+        st.session_state.camera_active = False
+    else:
+        # Set camera resolution
+        cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+        
+        # Create layout
+        col1, col2 = st.columns([2, 1])
+        video_placeholder = col1.empty()
+        status_placeholder = col2.empty()
+        chart_placeholder = col2.empty()
+        details_placeholder = col2.empty()
+        
+        # Initial state
+        last_emotion = "None"
+        last_confidence = 0
+        
+        while st.session_state.camera_active:
+            ret, frame = cap.read()
+            if not ret:
+                st.error("Failed to capture frame from webcam")
+                break
+                
+            # Display the webcam feed
+            rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            video_placeholder.image(rgb_frame, channels="RGB", width=500)
+            
+            # Process frame every SEND_INTERVAL_SEC seconds
+            now = time.time()
+            if now - st.session_state.last_send_ts >= SEND_INTERVAL_SEC:
+                try:
+                    # Send to backend
+                    result = post_to_backend(frame)
+                    result['emotion'] = map_emotion(result['emotion'])
+                    
+                    # Update history and get averages
+                    avg = update_rollups(result)
+                    st.session_state.last_send_ts = now
+                    
+                    # Update last emotion and confidence
+                    last_emotion = result['emotion']
+                    last_confidence = result['confidence']
+                    
+                    # Display current emotion
+                    status_placeholder.success(f"Current: **{last_emotion}** ({last_confidence}%)")
+                    
+                    # Display rolling average
+                    sorted_avg = sorted(avg.items(), key=lambda kv: kv[1], reverse=True)
+                    dominant_emotion = sorted_avg[0][0]
+                    dominant_percent = round(sorted_avg[0][1] * 100, 1)
+                    
+                    # Display emotion percentages from most to least dominant
+                    details_text = "**Emotion Percentages:**\n\n"
+                    for emotion, percentage in sorted_avg:
+                        details_text += f"- {emotion}: {round(percentage * 100, 1)}%\n"
+                    
+                    details_placeholder.markdown(details_text)
+                    
+                    # Display bar chart
+                    chart_data = {k: [v] for k, v in avg.items()}
+                    chart_placeholder.bar_chart(chart_data)
+                    
+                except Exception as e:
+                    status_placeholder.error(f"Request failed: {e}")
+            
+            # Add small delay to prevent high CPU usage
+            time.sleep(0.05)
+        
+        # Release camera when done
+        cap.release()
+else:
+    st.info("Click 'Start Camera' to begin real-time emotion detection")
 
 # =========================
 # RESET BUTTON
 # =========================
 if st.button("Reset rolling average"):
     st.session_state.history.clear()
-    video_ph.empty()
-    current_ph.empty()
-    avg_ph.empty()
-    chart_ph.empty()
-    st.info("Averages cleared.")
+    st.success("Averages cleared.")
