@@ -8,6 +8,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from PIL import Image, ImageFilter
 import cv2
 import mediapipe as mp
+import math
+from collections import deque
 
 # -------------------------------
 # Model download & load
@@ -49,19 +51,87 @@ face_cascade = cv2.CascadeClassifier(cascade_path)
 if face_cascade.empty():
     raise RuntimeError("Failed to load Haar Cascade")
 
-
-# Instantiate once at module level
-mp_face_mesh_instance = mp.solutions.face_mesh.FaceMesh(
+# MediaPipe setup
+mp_face_mesh = mp.solutions.face_mesh
+mp_face_mesh_instance = mp_face_mesh.FaceMesh(
     max_num_faces=1,
     refine_landmarks=True,
     min_detection_confidence=0.5,
     min_tracking_confidence=0.5
 )
 
+# Head movement tracking
+previous_head_pose = None
+head_movement_history = deque(maxlen=10)
+
+def calculate_head_pose(landmarks, image_shape):
+    """Calculate head pose angles from facial landmarks"""
+    image_height, image_width = image_shape[:2]
+    
+    # Key landmarks for head pose estimation
+    nose_tip = landmarks.landmark[1]
+    chin = landmarks.landmark[152]
+    left_eye_left_corner = landmarks.landmark[33]
+    right_eye_right_corner = landmarks.landmark[263]
+    left_mouth_corner = landmarks.landmark[61]
+    right_mouth_corner = landmarks.landmark[291]
+    
+    # Convert to pixel coordinates
+    nose = (int(nose_tip.x * image_width), int(nose_tip.y * image_height))
+    chin_point = (int(chin.x * image_width), int(chin.y * image_height))
+    left_eye = (int(left_eye_left_corner.x * image_width), int(left_eye_left_corner.y * image_height))
+    right_eye = (int(right_eye_right_corner.x * image_width), int(right_eye_right_corner.y * image_height))
+    left_mouth = (int(left_mouth_corner.x * image_width), int(left_mouth_corner.y * image_height))
+    right_mouth = (int(right_mouth_corner.x * image_width), int(right_mouth_corner.y * image_height))
+    
+    # Calculate head pose angles (simplified)
+    # Yaw: horizontal head rotation
+    eye_center_x = (left_eye[0] + right_eye[0]) / 2
+    face_center_x = image_width / 2
+    yaw_angle = (eye_center_x - face_center_x) / (image_width / 2) * 45  # ±45 degrees
+    
+    # Pitch: vertical head rotation
+    eye_center_y = (left_eye[1] + right_eye[1]) / 2
+    mouth_center_y = (left_mouth[1] + right_mouth[1]) / 2
+    face_vertical_center = (eye_center_y + mouth_center_y) / 2
+    image_center_y = image_height / 2
+    pitch_angle = (face_vertical_center - image_center_y) / (image_height / 2) * 45  # ±45 degrees
+    
+    return {
+        'yaw': yaw_angle,
+        'pitch': pitch_angle,
+        'nose_position': nose
+    }
+
+def estimate_head_movement(current_pose):
+    """Estimate head movement percentage based on pose changes"""
+    global previous_head_pose, head_movement_history
+    
+    if previous_head_pose is None:
+        previous_head_pose = current_pose
+        return 0
+    
+    # Calculate movement between frames
+    yaw_diff = abs(current_pose['yaw'] - previous_head_pose['yaw'])
+    pitch_diff = abs(current_pose['pitch'] - previous_head_pose['pitch'])
+    
+    # Calculate Euclidean distance of nose movement
+    nose_movement = math.sqrt(
+        (current_pose['nose_position'][0] - previous_head_pose['nose_position'][0])**2 +
+        (current_pose['nose_position'][1] - previous_head_pose['nose_position'][1])**2
+    )
+    
+    # Normalize movement (0-100 scale)
+    movement_score = min(100, (yaw_diff + pitch_diff + nose_movement / 10) * 5)
+    
+    previous_head_pose = current_pose
+    head_movement_history.append(movement_score)
+    
+    # Return average of recent movements
+    return sum(head_movement_history) / len(head_movement_history) if head_movement_history else 0
+
 def estimate_eye_contact_mediapipe(face_img_color):
-    """
-    Returns eye contact 0-100 using MediaPipe FaceMesh.
-    """
+    """Returns eye contact 0-100 using MediaPipe FaceMesh."""
     eye_contact = 0
     rgb_face = cv2.cvtColor(face_img_color, cv2.COLOR_BGR2RGB)
     results = mp_face_mesh_instance.process(rgb_face)
@@ -70,6 +140,11 @@ def estimate_eye_contact_mediapipe(face_img_color):
         landmarks = results.multi_face_landmarks[0]
         left_iris_x = np.mean([l.x for l in landmarks.landmark[468:473]])
         right_iris_x = np.mean([l.x for l in landmarks.landmark[473:478]])
+        
+        # Calculate head pose for movement detection
+        head_pose = calculate_head_pose(landmarks, face_img_color.shape)
+        head_movement = estimate_head_movement(head_pose)
+        
         # Relax threshold
         if 0.3 < left_iris_x < 0.7 and 0.3 < right_iris_x < 0.7:
             eye_contact = 100
@@ -77,9 +152,9 @@ def estimate_eye_contact_mediapipe(face_img_color):
             eye_contact = 50  # partially looking at camera
     else:
         eye_contact = 0  # no face/iris detected
+        head_movement = 0
 
-    return eye_contact
-
+    return eye_contact, head_movement
 
 # -------------------------------
 # Predict endpoint
@@ -98,7 +173,13 @@ async def predict(file: UploadFile = File(...)):
         gray_img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         faces = face_cascade.detectMultiScale(gray_img, scaleFactor=1.1, minNeighbors=5, minSize=(30,30))
         if len(faces) == 0:
-            return {"emotion": "No face detected", "confidence": 0.0, "all_predictions": {}, "eye_contact": 0}
+            return {
+                "emotion": "No face detected", 
+                "confidence": 0.0, 
+                "all_predictions": {}, 
+                "eye_contact": 0,
+                "head_movement": 0
+            }
 
         x, y, w, h = faces[0]
         face_img_gray = gray_img[y:y+h, x:x+w]
@@ -116,15 +197,24 @@ async def predict(file: UploadFile = File(...)):
         predicted_class = int(np.argmax(predictions, axis=1)[0])
         predicted_prob = float(predictions[0][predicted_class])
 
-        # Eye contact using MediaPipe on detected face
-        eye_contact_percentage = estimate_eye_contact_mediapipe(face_img_color)
+        # Eye contact and head movement using MediaPipe
+        eye_contact_percentage, head_movement_percentage = estimate_eye_contact_mediapipe(face_img_color)
 
         return {
             "emotion": emotion_labels[predicted_class],
             "confidence": round(predicted_prob*100,2),
             "all_predictions": {emotion_labels[i]: float(predictions[0][i]) for i in range(len(emotion_labels))},
-            "eye_contact": eye_contact_percentage
+            "eye_contact": eye_contact_percentage,
+            "head_movement": head_movement_percentage
         }
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/")
+async def root():
+    return {"message": "Emotion Detection API is running"}
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)
