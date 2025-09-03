@@ -68,6 +68,8 @@ if "history" not in st.session_state:
     st.session_state.history = deque(maxlen=ROLLING_WINDOW)
 if "eye_contact_history" not in st.session_state:
     st.session_state.eye_contact_history = deque(maxlen=ROLLING_WINDOW)
+if "eye_contact_binary_history" not in st.session_state:
+    st.session_state.eye_contact_binary_history = deque(maxlen=ROLLING_WINDOW)
 if "stress_history" not in st.session_state:
     st.session_state.stress_history = deque(maxlen=ROLLING_WINDOW)
 if "camera_active" not in st.session_state:
@@ -97,28 +99,20 @@ def get_stress_label(stress_score: float):
     else:
         return "High Stress", "🔴"
 
-def get_interview_status(stress_score, eye_contact_avg, evaluation_report):
+def get_interview_status(stress_score, eye_contact_percentage, evaluation_report):
     """Determine overall interview status based on multiple metrics"""
-    # Score each component
     stress_score_val = 100 - stress_score  # invert so higher is better
-    
-    eye_contact_score = min(100, eye_contact_avg * 1.25)  # scale 80% to 100 score
-    
-    # Calculate compliance score for emotion ranges
+    eye_contact_score = eye_contact_percentage  # percentage of time eye contact was 100%
     compliance_score = 0
     total_ranges = len(evaluation_report)
     for _, (_, ok) in evaluation_report.items():
         compliance_score += 100 if ok else 60
     compliance_score /= total_ranges
-    
-    # Weighted overall score
     overall_score = (
         stress_score_val * 0.4 + 
         eye_contact_score * 0.3 + 
         compliance_score * 0.3
     )
-    
-    # Determine status
     if overall_score >= 80:
         return "Good ✅", overall_score, {
             "stress_score": stress_score_val,
@@ -145,16 +139,12 @@ def post_to_backend(img_bgr: np.ndarray):
     r.raise_for_status()
     return r.json()
 
-def calculate_stress_level(emotions, eye_contact):
-    # Emotion stress = only negative emotions with weights
+def calculate_stress_level(emotions, eye_contact_percentage):
     weighted_sum = 0
     for emo in ['Angry', 'Sad', 'Fear', 'Disgust']:
         weighted_sum += emotions.get(emo, 0) * st.session_state.EMOTION_WEIGHTS.get(emo, 0)
     emotion_component = min(100, weighted_sum * 100)
-
-    # Eye contact stress
-    eye_contact_component = min(100, (100 - eye_contact))
-
+    eye_contact_component = min(100, (100 - eye_contact_percentage))
     raw_stress = (
         st.session_state.STRESS_WEIGHTS['emotions'] * emotion_component +
         st.session_state.STRESS_WEIGHTS['eye_contact'] * eye_contact_component
@@ -169,7 +159,13 @@ def update_rollups(emotion_result):
     for k, v in probs.items():
         full[k] += float(v)
     st.session_state.history.append(full)
-    st.session_state.eye_contact_history.append(emotion_result.get("eye_contact", 0))
+    
+    # Get eye contact value and convert to binary (0 or 100)
+    eye_contact_value = emotion_result.get("eye_contact", 0)
+    eye_contact_binary = 100 if eye_contact_value >= 95 else 0  # Consider 95%+ as good eye contact
+    
+    st.session_state.eye_contact_history.append(eye_contact_value)
+    st.session_state.eye_contact_binary_history.append(eye_contact_binary)
 
     emotion_avg = defaultdict(float)
     for row in st.session_state.history:
@@ -179,26 +175,30 @@ def update_rollups(emotion_result):
     for k in emotion_avg:
         emotion_avg[k] /= n
 
+    # Calculate percentage of time eye contact was 100%
+    eye_contact_percentage = sum(st.session_state.eye_contact_binary_history) / max(1, len(st.session_state.eye_contact_binary_history))
     eye_contact_avg = sum(st.session_state.eye_contact_history) / max(1, len(st.session_state.eye_contact_history))
 
-    current_stress = calculate_stress_level(emotion_avg, eye_contact_avg)
+    current_stress = calculate_stress_level(emotion_avg, eye_contact_percentage)
     st.session_state.stress_history.append(current_stress)
     stress_avg = sum(st.session_state.stress_history) / max(1, len(st.session_state.stress_history))
     stress_label, stress_emoji = get_stress_label(stress_avg)
 
-    if eye_contact_avg >= 80:
+    if eye_contact_percentage >= 80:
         eye_contact_perf = "Good"
-    elif eye_contact_avg >= 40:
+    elif eye_contact_percentage >= 40:
         eye_contact_perf = "Average"
     else:
         eye_contact_perf = "Poor"
 
-    return emotion_avg, eye_contact_avg, stress_avg, stress_label, stress_emoji, eye_contact_perf
+    # Determine dominant emotion
+    dominant_emotion = max(emotion_avg.items(), key=lambda kv: kv[1])[0]
+
+    return emotion_avg, eye_contact_avg, eye_contact_percentage, stress_avg, stress_label, stress_emoji, eye_contact_perf, dominant_emotion
 
 def evaluate_emotion_distribution(emotion_avg):
     total = sum(emotion_avg.values())
     norm = {k: v/total for k,v in emotion_avg.items()} if total > 0 else emotion_avg
-    
     report = {}
     for key, (low, high) in st.session_state.EXPECTED_RANGES.items():
         if key == "Negatives":
@@ -210,29 +210,25 @@ def evaluate_emotion_distribution(emotion_avg):
     return report
 
 def add_colored_text(paragraph, text, color):
-    """Add text with specific color to a paragraph"""
     run = paragraph.add_run(text)
     if color == "green":
-        run.font.color.rgb = RGBColor(0, 128, 0)  # Dark green
+        run.font.color.rgb = RGBColor(0, 128, 0)
     elif color == "red":
-        run.font.color.rgb = RGBColor(220, 20, 60)  # Crimson red
+        run.font.color.rgb = RGBColor(220, 20, 60)
     elif color == "orange":
-        run.font.color.rgb = RGBColor(255, 140, 0)  # Dark orange
+        run.font.color.rgb = RGBColor(255, 140, 0)
     return paragraph
 
-def generate_report(emotion_avg, eye_contact_avg, stress_avg, stress_label, evaluation_report):
+def generate_report(emotion_avg, eye_contact_avg, eye_contact_percentage, stress_avg, stress_label, evaluation_report):
     doc = Document()
     doc.add_heading("Interview Analysis Report", 0)
     
-    # Calculate overall interview status
     interview_status, overall_score, component_scores = get_interview_status(
-        stress_avg, eye_contact_avg, evaluation_report
+        stress_avg, eye_contact_percentage, evaluation_report
     )
     
     # Executive Summary
     doc.add_heading("Executive Summary", level=1)
-    
-    # Overall status with color coding
     status_para = doc.add_paragraph()
     status_para.add_run("Overall Interview Status: ")
     if "Good" in interview_status:
@@ -242,7 +238,6 @@ def generate_report(emotion_avg, eye_contact_avg, stress_avg, stress_label, eval
     else:
         add_colored_text(status_para, interview_status, "red")
     
-    # Overall score with color coding
     score_para = doc.add_paragraph()
     score_para.add_run("Overall Score: ")
     if overall_score >= 80:
@@ -258,7 +253,7 @@ def generate_report(emotion_avg, eye_contact_avg, stress_avg, stress_label, eval
     ideal_para.add_run("• Stress Level: ").bold = True
     ideal_para.add_run("Below 40/100 (Lower is better)\n")
     ideal_para.add_run("• Eye Contact: ").bold = True
-    ideal_para.add_run("70-100% (Higher is better)\n")
+    ideal_para.add_run("70-100% of time with good eye contact (Higher is better)\n")
     ideal_para.add_run("• Emotion Ranges: ").bold = True
     ideal_para.add_run("Neutral (50-70%), Happy (20-30%), Surprise (5-10%), Negative Emotions (0-10%)")
     
@@ -294,17 +289,17 @@ def generate_report(emotion_avg, eye_contact_avg, stress_avg, stress_label, eval
             for run in paragraph.runs:
                 run.font.color.rgb = RGBColor(220, 20, 60)
     
-    # Eye Contact
-    metrics_table.cell(2, 0).text = "Eye Contact"
-    metrics_table.cell(2, 1).text = f"{eye_contact_avg:.1f}%"
+    # Eye Contact (Percentage of time with good eye contact)
+    metrics_table.cell(2, 0).text = "Eye Contact Time"
+    metrics_table.cell(2, 1).text = f"{eye_contact_percentage:.1f}%"
     metrics_table.cell(2, 2).text = "70-100%"
     eye_contact_cell = metrics_table.cell(2, 3)
-    if eye_contact_avg >= 70:
+    if eye_contact_percentage >= 70:
         eye_contact_cell.text = "Good ✅"
         for paragraph in eye_contact_cell.paragraphs:
             for run in paragraph.runs:
                 run.font.color.rgb = RGBColor(0, 128, 0)
-    elif eye_contact_avg >= 40:
+    elif eye_contact_percentage >= 40:
         eye_contact_cell.text = "Average ⚠️"
         for paragraph in eye_contact_cell.paragraphs:
             for run in paragraph.runs:
@@ -353,7 +348,7 @@ def generate_report(emotion_avg, eye_contact_avg, stress_avg, stress_label, eval
     component_table.cell(1, 2).text = "40%"
     
     # Eye Contact Component
-    component_table.cell(2, 0).text = "Eye Contact"
+    component_table.cell(2, 0).text = "Eye Contact Time"
     component_table.cell(2, 1).text = f"{component_scores['eye_contact_score']:.1f}/100"
     component_table.cell(2, 2).text = "30%"
     
@@ -362,50 +357,9 @@ def generate_report(emotion_avg, eye_contact_avg, stress_avg, stress_label, eval
     component_table.cell(3, 1).text = f"{component_scores['emotion_compliance_score']:.1f}/100"
     component_table.cell(3, 2).text = "30%"
 
-    # Emotion Analysis
-    doc.add_heading("Emotion Analysis", level=1)
-    emotion_table = doc.add_table(rows=1, cols=3)
-    emotion_table.style = 'Table Grid'
-    
-    hdr_cells = emotion_table.rows[0].cells
-    hdr_cells[0].text = 'Emotion'
-    hdr_cells[1].text = 'Percentage'
-    hdr_cells[2].text = 'Interpretation'
-    
-    for emo, val in emotion_avg.items():
-        row_cells = emotion_table.add_row().cells
-        row_cells[0].text = emo
-        row_cells[1].text = f"{val*100:.1f}%"
-        
-        # Add interpretation with color coding
-        interpretation_cell = row_cells[2]
-        if emo == "Neutral" and 0.5 <= val <= 0.7:
-            interpretation_cell.text = "Good - Appropriate focus"
-            for paragraph in interpretation_cell.paragraphs:
-                for run in paragraph.runs:
-                    run.font.color.rgb = RGBColor(0, 128, 0)
-        elif emo == "Happy" and 0.2 <= val <= 0.3:
-            interpretation_cell.text = "Good - Positive engagement"
-            for paragraph in interpretation_cell.paragraphs:
-                for run in paragraph.runs:
-                    run.font.color.rgb = RGBColor(0, 128, 0)
-        elif emo in ["Angry", "Sad", "Fear", "Disgust"] and val <= 0.1:
-            interpretation_cell.text = "Good - Minimal negative emotions"
-            for paragraph in interpretation_cell.paragraphs:
-                for run in paragraph.runs:
-                    run.font.color.rgb = RGBColor(0, 128, 0)
-        elif emo in ["Angry", "Sad", "Fear", "Disgust"] and val > 0.1:
-            interpretation_cell.text = "Needs improvement - High negative emotions"
-            for paragraph in interpretation_cell.paragraphs:
-                for run in paragraph.runs:
-                    run.font.color.rgb = RGBColor(220, 20, 60)
-        else:
-            interpretation_cell.text = "Needs review - Outside expected range"
-            for paragraph in interpretation_cell.paragraphs:
-                for run in paragraph.runs:
-                    run.font.color.rgb = RGBColor(255, 140, 0)
-
-    # Emotion Range Compliance
+    # =====================
+    # Emotion Range Compliance ONLY
+    # =====================
     doc.add_heading("Emotion Range Compliance", level=1)
     compliance_table = doc.add_table(rows=1, cols=4)
     compliance_table.style = 'Table Grid'
@@ -422,7 +376,6 @@ def generate_report(emotion_avg, eye_contact_avg, stress_avg, stress_label, eval
         row_cells[1].text = f"{val*100:.1f}%"
         low, high = st.session_state.EXPECTED_RANGES[emo]
         row_cells[2].text = f"{low*100:.0f}–{high*100:.0f}%"
-        
         status_cell = row_cells[3]
         if ok:
             status_cell.text = "✅ Within range"
@@ -435,7 +388,7 @@ def generate_report(emotion_avg, eye_contact_avg, stress_avg, stress_label, eval
                 for run in paragraph.runs:
                     run.font.color.rgb = RGBColor(220, 20, 60)
 
-    # Recommendations section
+    # Recommendations
     doc.add_heading("Key Recommendations", level=1)
     if overall_score >= 80:
         doc.add_paragraph("Overall performance was excellent. The candidate demonstrated strong communication skills with appropriate emotional expression and good eye contact.")
@@ -444,7 +397,6 @@ def generate_report(emotion_avg, eye_contact_avg, stress_avg, stress_label, eval
     else:
         doc.add_paragraph("Overall performance needs significant improvement. The candidate demonstrated several areas of concern that should be addressed.")
     
-    # Specific recommendations based on metrics
     recommendations = doc.add_paragraph()
     recommendations.add_run("Specific Recommendations:\n").bold = True
     
@@ -453,10 +405,10 @@ def generate_report(emotion_avg, eye_contact_avg, stress_avg, stress_label, eval
     elif stress_avg > 40:
         recommendations.add_run("• Moderate stress levels observed. Candidate may benefit from relaxation techniques before interviews.\n")
     
-    if eye_contact_avg < 60:
-        recommendations.add_run("• Eye contact needs improvement. Practice maintaining 60-70% eye contact during conversations.\n")
-    elif eye_contact_avg < 70:
-        recommendations.add_run("• Eye contact is adequate but could be improved. Aim for 70% or higher for optimal engagement.\n")
+    if eye_contact_percentage < 60:
+        recommendations.add_run("• Eye contact needs improvement. Practice maintaining good eye contact for longer periods during conversations.\n")
+    elif eye_contact_percentage < 70:
+        recommendations.add_run("• Eye contact is adequate but could be improved. Aim for maintaining good eye contact 70% or more of the time.\n")
     
     if any(not ok for _, ok in evaluation_report.items()):
         recommendations.add_run("• Emotional expression needs adjustment. Work on maintaining neutral to positive expressions during professional interactions.\n")
@@ -487,13 +439,13 @@ if page == "Interview Dashboard":
             st.session_state.camera_active = True
             st.session_state.history.clear()
             st.session_state.eye_contact_history.clear()
+            st.session_state.eye_contact_binary_history.clear()
             st.session_state.stress_history.clear()
             st.rerun()
     with col2:
         if st.button("Stop Camera", disabled=not st.session_state.camera_active):
             st.session_state.camera_active = False
             if len(st.session_state.history) > 0:
-                # aggregate results
                 emotion_avg = defaultdict(float)
                 for row in st.session_state.history:
                     for k, v in row.items():
@@ -502,13 +454,12 @@ if page == "Interview Dashboard":
                 for k in emotion_avg:
                     emotion_avg[k] /= n
                 eye_contact_avg = sum(st.session_state.eye_contact_history)/max(1,len(st.session_state.eye_contact_history))
+                eye_contact_percentage = sum(st.session_state.eye_contact_binary_history)/max(1,len(st.session_state.eye_contact_binary_history))
                 stress_avg = sum(st.session_state.stress_history)/max(1,len(st.session_state.stress_history))
                 stress_label, _ = get_stress_label(stress_avg)
                 evaluation_report = evaluate_emotion_distribution(emotion_avg)
 
-                filepath = generate_report(emotion_avg, eye_contact_avg, stress_avg, stress_label, evaluation_report)
-
-                # ✅ Auto-download file instead of st.download_button
+                filepath = generate_report(emotion_avg, eye_contact_avg, eye_contact_percentage, stress_avg, stress_label, evaluation_report)
                 with open(filepath, "rb") as f:
                     bytes_data = f.read()
                 st.download_button(
@@ -518,7 +469,6 @@ if page == "Interview Dashboard":
                     mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                     key="auto_download"
                 )
-
 
     if st.session_state.camera_active:
         cap = cv2.VideoCapture(0)
@@ -536,9 +486,9 @@ if page == "Interview Dashboard":
             with right_col:
                 status_placeholder = st.empty()
                 stress_placeholder = st.empty()
+                chart_placeholder = st.empty()
                 details_placeholder = st.empty()
                 evaluation_placeholder = st.empty()
-                chart_placeholder = st.empty()
 
             while st.session_state.camera_active:
                 ret, frame = cap.read()
@@ -551,23 +501,36 @@ if page == "Interview Dashboard":
 
                 try:
                     result = post_to_backend(frame)
-                    (emotion_avg, eye_contact_avg, stress_avg, stress_label, stress_emoji, eye_contact_perf) = update_rollups(result)
+                    (emotion_avg, eye_contact_avg, eye_contact_percentage, stress_avg, stress_label, stress_emoji, eye_contact_perf, dominant_emotion) = update_rollups(result)
 
-                    current_emotion = result.get("emotion", "None")
+                    current_emotion = dominant_emotion  # make dominant emotion prominent
                     confidence = result.get("confidence", 0)
                     eye_contact = result.get("eye_contact", 0)
                     
+                    # Make dominant emotion very prominent
                     status_placeholder.markdown(
-                        f"**Emotion:** {current_emotion} ({confidence}%)  |  "
-                        f"**Eye Contact:** {eye_contact}%"
+                        f"<h2 style='text-align: center; color: {'green' if current_emotion in ['Neutral', 'Happy'] else 'red' if current_emotion in ['Angry', 'Sad', 'Fear', 'Disgust'] else 'orange'};'>"
+                        f"Dominant Emotion: {current_emotion} ({confidence}%)</h2>",
+                        unsafe_allow_html=True
                     )
+                    
                     stress_placeholder.markdown(
-                        f"**{stress_emoji} Stress:** {stress_label} ({stress_avg:.1f}/100)"
+                        f"<div style='text-align: center;'>"
+                        f"<span style='font-size: 1.2em;'>👀 Eye Contact: {eye_contact}% (Current)</span> | "
+                        f"<span style='font-size: 1.2em;'>⏱️ Good Eye Contact Time: {eye_contact_percentage:.1f}%</span> | "
+                        f"<span style='font-size: 1.2em;'>{stress_emoji} Stress: {stress_label} ({stress_avg:.1f}/100)</span>"
+                        f"</div>",
+                        unsafe_allow_html=True
                     )
 
+                    # Display chart first
+                    chart_data = {k:[v] for k,v in emotion_avg.items()}
+                    chart_placeholder.bar_chart(chart_data)
+                    
+                    # Then display averages below the chart
                     sorted_emotion_avg = sorted(emotion_avg.items(), key=lambda kv: kv[1], reverse=True)
                     details_text = "📊 **Averages:**  " + "  |  ".join([f"{e}: {round(v*100,1)}%" for e,v in sorted_emotion_avg])
-                    details_text += f"\n\n👀 **Eye Contact:** {round(eye_contact_avg,1)}% ({eye_contact_perf})"
+                    details_text += f"\n\n⏱️ **Good Eye Contact Time:** {round(eye_contact_percentage,1)}% ({eye_contact_perf})"
                     details_text += f"  |  🔎 **Stress:** {stress_avg:.1f}/100 ({stress_label})"
                     details_placeholder.markdown(details_text)
 
@@ -579,9 +542,6 @@ if page == "Interview Dashboard":
                         status = "✅" if ok else "⚠️"
                         eval_text += f"- {k}: {percent}% (exp. {int(low*100)}–{int(high*100)}%) {status}\n"
                     evaluation_placeholder.markdown(eval_text)
-
-                    chart_data = {k:[v] for k,v in emotion_avg.items()}
-                    chart_placeholder.bar_chart(chart_data)
 
                 except Exception as e:
                     st.error(f"Backend error: {e}")
@@ -621,7 +581,6 @@ if page == "Admin Dashboard":
                 st.session_state.STRESS_WEIGHTS[comp] = IDEAL_STRESS_WEIGHTS[comp]
                 save_settings()
                 st.rerun()
-    # Normalize
     s = sum(st.session_state.STRESS_WEIGHTS.values())
     for k in st.session_state.STRESS_WEIGHTS:
         st.session_state.STRESS_WEIGHTS[k] /= s
@@ -640,6 +599,5 @@ if page == "Admin Dashboard":
                 save_settings()
                 st.rerun()
 
-    # Always save latest settings
     save_settings()
     st.success("✅ Admin settings saved. They will apply in Interview Dashboard.")
