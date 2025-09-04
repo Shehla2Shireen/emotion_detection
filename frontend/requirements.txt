@@ -8,3 +8,5 @@ opencv-python-headless
 
 sievedata
 mediapipe opencv-python
+python-docx
+

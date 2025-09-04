@@ -383,7 +383,11 @@ def generate_report(emotion_avg, eye_contact_avg, eye_contact_percentage, stress
 # MULTI-PAGE DASHBOARD
 # =========================
 st.set_page_config(page_title="Interview Analysis Tool", page_icon="🎥", layout="wide")
-page = st.sidebar.radio("Navigate", ["Interview Dashboard", "Admin Dashboard"])
+page = st.sidebar.radio(
+    "Navigate", 
+    ["Interview Dashboard", "Video Upload", "Admin Dashboard"]
+)
+
 
 # =========================
 # PAGE 1: INTERVIEW DASHBOARD
@@ -527,6 +531,156 @@ if page == "Interview Dashboard":
 
     else:
         st.info("Click 'Start Camera' to begin detection")
+# =========================
+# PAGE 3: VIDEO UPLOAD
+# =========================
+# =========================
+# PAGE 3: VIDEO UPLOAD
+# =========================
+if page == "Video Upload":
+    st.title("🎬 Video Upload Analysis")
+    st.caption("Upload a recorded interview video to analyze emotions, eye contact, and stress.")
+
+    uploaded_file = st.file_uploader("Upload a video file", type=["mp4", "avi", "mov"])
+    
+    if uploaded_file is not None:
+        tfile = "temp_video.mp4"
+        with open(tfile, "wb") as f:
+            f.write(uploaded_file.getbuffer())
+        st.success("Video uploaded successfully!")
+
+        cap = cv2.VideoCapture(tfile)
+        if not cap.isOpened():
+            st.error("Failed to open video file.")
+        else:
+            progress_bar = st.progress(0)
+            frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+            processed_frames = 0
+
+            # --- layout like live camera ---
+            left_col, right_col = st.columns([2,2])
+            with left_col:
+                video_placeholder = st.empty()
+            with right_col:
+                status_placeholder = st.empty()
+                stress_placeholder = st.empty()
+                chart_placeholder = st.empty()
+                details_placeholder = st.empty()
+                evaluation_placeholder = st.empty()
+
+            # Reset session-state histories for this video
+            st.session_state.history.clear()
+            st.session_state.eye_contact_history.clear()
+            st.session_state.eye_contact_binary_history.clear()
+            st.session_state.stress_history.clear()
+            st.session_state.dominance_history = deque(maxlen=5000)
+
+            while True:
+                ret, frame = cap.read()
+                if not ret:
+                    break
+
+                rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                video_placeholder.image(rgb_frame, channels="RGB", width=500)
+
+                # --- backend processing ---
+                try:
+                    result = post_to_backend(frame)
+                    (emotion_avg, eye_contact_avg, eye_contact_percentage,
+                    stress_label, stress_emoji, eye_contact_perf,
+                    eye_contact_status,
+                    dominant_emotion, evaluation_report) = update_rollups(result)
+
+                    # --- Dominant emotion prominently ---
+                    if dominant_emotion in ["Neutral","Happy"]:
+                        color = "green"
+                    elif dominant_emotion is not None:
+                        color = "red"
+                    else:
+                        color = "orange"
+                    status_placeholder.markdown(
+                        f"<h2 style='text-align: center; color: {color};'>🔥 Dominant Now: {dominant_emotion}</h2>",
+                        unsafe_allow_html=True
+                    )
+
+                    # --- Bar chart of instant emotions ---
+                    instant_emotions = result.get("all_predictions", {}) or {}
+                    chart_placeholder.bar_chart({k:[v] for k,v in instant_emotions.items()})
+
+                    # --- Instantaneous emotions details ---
+                    instant_sorted = sorted(instant_emotions.items(), key=lambda kv: kv[1], reverse=True)
+                    instant_text = "📌 **Instantaneous Emotions (Current Frame):**\n"
+                    for emo, val in instant_sorted:
+                        instant_text += f"- {emo}: {val*100:.1f}%\n"
+                    details_placeholder.markdown(instant_text)
+
+                    # --- Overall stress & eye contact ---
+                    stress_placeholder.markdown(
+                        f"<div style='text-align: center;'>"
+                        f"<span style='font-size: 1.1em;'>👀 Eye Contact: {result.get('eye_contact', 0)}% (Current)</span> | "
+                        f"<span style='font-size: 1.1em;'>⏱️ Good Eye Contact: {eye_contact_percentage:.1f}% ({eye_contact_perf})</span> | "
+                        f"<span style='font-size: 1.1em;'>{stress_emoji} Stress: {stress_label}</span>"
+                        f"</div>",
+                        unsafe_allow_html=True
+                    )
+
+                    # --- Smoothed averages ---
+                    sorted_emotion_avg = sorted(emotion_avg.items(), key=lambda kv: kv[1], reverse=True)
+                    avg_text = "📊 **Smoothed Averages (15-frame window):**\n" + \
+                            "  |  ".join([f"{e}: {round(v*100,1)}%" for e,v in sorted_emotion_avg])
+                    evaluation_placeholder.markdown(avg_text)
+
+                    # --- Emotion range compliance ---
+                    eval_text = "🎯 **Emotion Ranges:**\n"
+                    for k, (val, ok) in evaluation_report.items():
+                        percent = round(val*100,1)
+                        low, high = st.session_state.EXPECTED_RANGES[k]
+                        status = "✅" if ok else "⚠️"
+                        eval_text += f"- {k}: {percent}% (exp. {int(low*100)}–{int(high*100)}%) {status}\n"
+                    evaluation_placeholder.markdown(eval_text)
+
+                except Exception as e:
+                    st.warning(f"Frame {processed_frames+1} processing failed: {e}")
+
+                processed_frames += 1
+                progress_bar.progress(min(processed_frames / frame_count, 1.0))
+
+            cap.release()
+            st.success("✅ Video processing completed!")
+
+            # --- Generate full report ---
+            if len(st.session_state.history) > 0:
+                final_emotion_avg = defaultdict(float)
+                for row in st.session_state.history:
+                    for k, v in row.items():
+                        final_emotion_avg[k] += v
+                n = max(1, len(st.session_state.history))
+                for k in final_emotion_avg:
+                    final_emotion_avg[k] /= n
+
+                final_eye_contact_avg = sum(st.session_state.eye_contact_history)/max(1,len(st.session_state.eye_contact_history))
+                final_eye_contact_percentage = sum(st.session_state.eye_contact_binary_history)/max(1,len(st.session_state.eye_contact_binary_history))
+                final_evaluation_report = evaluate_emotion_distribution(final_emotion_avg)
+                final_stress_label, _ = get_stress_label(final_evaluation_report)
+
+                filepath = generate_report(
+                    final_emotion_avg,
+                    final_eye_contact_avg,
+                    final_eye_contact_percentage,
+                    final_stress_label,
+                    final_evaluation_report
+                )
+
+                with open(filepath, "rb") as f:
+                    bytes_data = f.read()
+                st.download_button(
+                    label="⬇️ Download Video Analysis Report",
+                    data=bytes_data,
+                    file_name=filepath,
+                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    key="video_report_download"
+                )
+
 
 
 # =========================
