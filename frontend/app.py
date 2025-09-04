@@ -34,8 +34,8 @@ IDEAL_EMOTION_WEIGHTS = {
 IDEAL_STRESS_WEIGHTS = {'emotions': 0.7, 'eye_contact': 0.3}  # unused now
 IDEAL_EXPECTED_RANGES = {
     "Neutral": (0.50, 0.70),
-    "Happy": (0.01, 0.05),
-    "Surprise": (0.01, 0.05),
+    "Happy": (0.001, 0.05),
+    "Surprise": (0.00, 0.05),
     "Negatives": (0.00, 0.10)
 }
 
@@ -132,7 +132,6 @@ def post_to_backend(img_bgr: np.ndarray):
     r = requests.post(BACKEND_URL, files=files, timeout=30)
     r.raise_for_status()
     return r.json()
-
 def update_rollups(emotion_result):
     probs = emotion_result.get("all_predictions", {})
     full = {e: 0.0 for e in EMOTIONS}
@@ -142,11 +141,26 @@ def update_rollups(emotion_result):
 
     # --- Eye contact handling ---
     eye_contact_value = emotion_result.get("eye_contact", 0)
-    eye_contact_binary = 100 if eye_contact_value >= 95 else 0
-    st.session_state.eye_contact_history.append(eye_contact_value)
-    st.session_state.eye_contact_binary_history.append(eye_contact_binary)
 
-    # --- Average probabilities (not used for ranges anymore, but kept for charts) ---
+    # Count only frames with full eye contact
+    is_full_contact = 1 if eye_contact_value >= 95 else 0
+    st.session_state.eye_contact_binary_history.append(is_full_contact)
+
+    # Rolling percentage of "good eye contact frames"
+    eye_contact_percentage = (
+        sum(st.session_state.eye_contact_binary_history) /
+        max(1, len(st.session_state.eye_contact_binary_history)) * 100
+    )
+
+    # Instantaneous status for frontend
+    if eye_contact_value >= 95:
+        eye_contact_status = "Yes 👀"
+    elif eye_contact_value > 0:
+        eye_contact_status = "Partial 👁️"
+    else:
+        eye_contact_status = "No ❌"
+
+    # --- Average probabilities (kept for charts) ---
     emotion_avg = defaultdict(float)
     for row in st.session_state.history:
         for k, v in row.items():
@@ -155,13 +169,9 @@ def update_rollups(emotion_result):
     for k in emotion_avg:
         emotion_avg[k] /= n
 
-    # --- Eye contact metrics ---
-    eye_contact_percentage = sum(st.session_state.eye_contact_binary_history) / max(1, len(st.session_state.eye_contact_binary_history))
-    eye_contact_avg = sum(st.session_state.eye_contact_history) / max(1, len(st.session_state.eye_contact_history))
-
     # --- Track dominant emotions history ---
     if "dominance_history" not in st.session_state:
-        st.session_state.dominance_history = deque(maxlen=5000)  # big enough for whole session
+        st.session_state.dominance_history = deque(maxlen=5000)
     dominant_emotion = max(probs.items(), key=lambda kv: kv[1])[0] if probs else None
     if dominant_emotion:
         st.session_state.dominance_history.append(dominant_emotion)
@@ -171,7 +181,9 @@ def update_rollups(emotion_result):
 
     # --- Stress label ---
     stress_label, stress_emoji = get_stress_label(evaluation_report)
-    st.session_state.stress_history.append(1 if stress_label == "High Stress" else 0)
+    st.session_state.stress_history.append(
+        1 if stress_label == "High Stress" else 0
+    )
 
     # --- Eye contact performance bucket ---
     if eye_contact_percentage >= 80:
@@ -181,7 +193,18 @@ def update_rollups(emotion_result):
     else:
         eye_contact_perf = "Poor"
 
-    return emotion_avg, eye_contact_avg, eye_contact_percentage, stress_label, stress_emoji, eye_contact_perf, dominant_emotion, evaluation_report
+    return (
+        emotion_avg,
+        eye_contact_value,  # instantaneous
+        eye_contact_percentage,  # percent of full-contact frames
+        stress_label,
+        stress_emoji,
+        eye_contact_perf,
+        eye_contact_status,
+        dominant_emotion,
+        evaluation_report,
+    )
+
 
 
 def evaluate_emotion_distribution(emotion_avg):
@@ -193,9 +216,12 @@ def evaluate_emotion_distribution(emotion_avg):
     if "dominance_history" not in st.session_state or len(st.session_state.dominance_history) == 0:
         return {k: (0.0, False) for k in st.session_state.EXPECTED_RANGES}
 
+    # ✅ Count only dominant emotions
     dominance_counts = {emo: 0 for emo in EMOTIONS}
     for emo in st.session_state.dominance_history:
-        dominance_counts[emo] += 1
+        if emo in dominance_counts:
+            dominance_counts[emo] += 1
+
     total_frames = len(st.session_state.dominance_history)
     dominance_percentages = {emo: dominance_counts[emo] / total_frames for emo in EMOTIONS}
 
@@ -210,9 +236,11 @@ def evaluate_emotion_distribution(emotion_avg):
             )
             report[key] = (neg_val, low <= neg_val <= high)
         else:
+            # ✅ Only use dominance percentage (never averages)
             val = dominance_percentages.get(key, 0)
             report[key] = (val, low <= val <= high)
     return report
+
 
 
 # =========================
@@ -432,7 +460,12 @@ if page == "Interview Dashboard":
 
                 try:
                     result = post_to_backend(frame)
-                    (emotion_avg, eye_contact_avg, eye_contact_percentage, stress_label, stress_emoji, eye_contact_perf, dominant_emotion, evaluation_report) = update_rollups(result)
+                    (emotion_avg, eye_contact_avg, eye_contact_percentage,
+                    stress_label, stress_emoji, eye_contact_perf,
+                    eye_contact_status,    # ✅ add this
+                    dominant_emotion, evaluation_report) = update_rollups(result)
+
+                    # (emotion_avg, eye_contact_avg, eye_contact_percentage, stress_label, stress_emoji, eye_contact_perf, dominant_emotion, evaluation_report) = update_rollups(result)
                     current_emotion = dominant_emotion  # make dominant emotion prominent
                     confidence = result.get("confidence", 0)
                     eye_contact = result.get("eye_contact", 0)

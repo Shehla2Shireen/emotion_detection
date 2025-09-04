@@ -146,7 +146,7 @@ def estimate_eye_contact_mediapipe(face_img_color):
         head_movement = estimate_head_movement(head_pose)
         
         # Relax threshold
-        if 0.3 < left_iris_x < 0.7 and 0.3 < right_iris_x < 0.7:
+        if 0.27 < left_iris_x < 0.73 and 0.27 < right_iris_x < 0.73:
             eye_contact = 100
         else:
             eye_contact = 50  # partially looking at camera
