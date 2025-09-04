@@ -193,8 +193,32 @@ async def predict(file: UploadFile = File(...)):
         sharpened_img = np.expand_dims(sharpened_img, axis=(0,-1))
         tensor_input = tf.convert_to_tensor(sharpened_img, dtype=tf.float32)
         outputs = infer(tf.constant(tensor_input))
-        predictions = list(outputs.values())[0].numpy()
+
+        # FIX: defensive check on model outputs to avoid index errors
+        predictions_arr = list(outputs.values())[0].numpy()
+        if predictions_arr.ndim != 2 or predictions_arr.shape[0] == 0:
+            eye_contact_percentage, head_movement_percentage = estimate_eye_contact_mediapipe(face_img_color)
+            return {
+                "emotion": "Unknown",
+                "confidence": 0.0,
+                "all_predictions": {},
+                "eye_contact": eye_contact_percentage,
+                "head_movement": head_movement_percentage
+            }
+
+        predictions = predictions_arr  # shape: (1, num_classes)
         predicted_class = int(np.argmax(predictions, axis=1)[0])
+        # Guard against unexpected class size
+        if predictions.shape[1] != len(emotion_labels):
+            eye_contact_percentage, head_movement_percentage = estimate_eye_contact_mediapipe(face_img_color)
+            return {
+                "emotion": "Unknown",
+                "confidence": 0.0,
+                "all_predictions": {},
+                "eye_contact": eye_contact_percentage,
+                "head_movement": head_movement_percentage
+            }
+
         predicted_prob = float(predictions[0][predicted_class])
 
         # Eye contact and head movement using MediaPipe

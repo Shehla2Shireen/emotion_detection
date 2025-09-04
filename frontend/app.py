@@ -92,9 +92,9 @@ ALPHA = 0.3
 # HELPERS
 # =========================
 def get_stress_label(stress_score: float):
-    if stress_score < 40:
+    if stress_score < 5:
         return "Low Stress", "🟢"
-    elif stress_score < 65:
+    elif stress_score < 10:
         return "Moderate Stress", "🟡"
     else:
         return "High Stress", "🔴"
@@ -507,13 +507,35 @@ if page == "Interview Dashboard":
                     confidence = result.get("confidence", 0)
                     eye_contact = result.get("eye_contact", 0)
                     
-                    # Make dominant emotion very prominent
-                    status_placeholder.markdown(
-                        f"<h2 style='text-align: center; color: {'green' if current_emotion in ['Neutral', 'Happy'] else 'red' if current_emotion in ['Angry', 'Sad', 'Fear', 'Disgust'] else 'orange'};'>"
-                        f"Dominant Emotion: {current_emotion} ({confidence}%)</h2>",
-                        unsafe_allow_html=True
-                    )
-                    
+                    # =======================
+                    # 1) INSTANTANEOUS EMOTIONS (Current Frame)
+                    # =======================
+                    instant_emotions = result.get("all_predictions", {}) or {}  # FIX: ensure dict
+                    instant_sorted = sorted(instant_emotions.items(), key=lambda kv: kv[1], reverse=True)
+
+                    if len(instant_sorted) > 0:
+                        top_emo, top_val = instant_sorted[0]
+                        status_placeholder.markdown(
+                            f"<h2 style='text-align: center; color: {'green' if top_emo in ['Neutral','Happy'] else 'red'};'>"
+                            f"🔥 Dominant Now: {top_emo} ({top_val*100:.1f}%)</h2>",
+                            unsafe_allow_html=True
+                        )
+                        chart_placeholder.bar_chart({k:[v] for k,v in instant_emotions.items()})
+                        # Show ranked list
+                        instant_text = "📌 **Instantaneous Emotions (Current Frame):**\n"
+                        for emo, val in instant_sorted:
+                            instant_text += f"- {emo}: {val*100:.1f}%\n"
+                        details_placeholder.markdown(instant_text)
+                    else:
+                        # FIX: handle no predictions safely (no face / model fallback)
+                        status_placeholder.markdown(
+                            "<h2 style='text-align: center; color: orange;'>No face detected</h2>",
+                            unsafe_allow_html=True
+                        )
+                        chart_placeholder.bar_chart({e:[0.0] for e in EMOTIONS})
+                        details_placeholder.markdown("📌 **Instantaneous Emotions (Current Frame):**\n- No data for this frame.")
+
+                    # Current eye contact & stress (always shown)
                     stress_placeholder.markdown(
                         f"<div style='text-align: center;'>"
                         f"<span style='font-size: 1.2em;'>👀 Eye Contact: {eye_contact}% (Current)</span> | "
@@ -523,16 +545,15 @@ if page == "Interview Dashboard":
                         unsafe_allow_html=True
                     )
 
-                    # Display chart first
-                    chart_data = {k:[v] for k,v in emotion_avg.items()}
-                    chart_placeholder.bar_chart(chart_data)
-                    
-                    # Then display averages below the chart
+                    # =======================
+                    # 2) SMOOTHED AVERAGES (Rolling Window)
+                    # =======================
                     sorted_emotion_avg = sorted(emotion_avg.items(), key=lambda kv: kv[1], reverse=True)
-                    details_text = "📊 **Averages:**  " + "  |  ".join([f"{e}: {round(v*100,1)}%" for e,v in sorted_emotion_avg])
-                    details_text += f"\n\n⏱️ **Good Eye Contact Time:** {round(eye_contact_percentage,1)}% ({eye_contact_perf})"
-                    details_text += f"  |  🔎 **Stress:** {stress_avg:.1f}/100 ({stress_label})"
-                    details_placeholder.markdown(details_text)
+                    avg_text = "📊 **Smoothed Averages (15-frame window):**\n" + \
+                            "  |  ".join([f"{e}: {round(v*100,1)}%" for e,v in sorted_emotion_avg])
+                    avg_text += f"\n\n⏱️ **Good Eye Contact Time:** {eye_contact_percentage:.1f}% ({eye_contact_perf})"
+                    avg_text += f"  |  🔎 **Stress:** {stress_avg:.1f}/100 ({stress_label})"
+                    evaluation_placeholder.markdown(avg_text)
 
                     evaluation_report = evaluate_emotion_distribution(emotion_avg)
                     eval_text = "🎯 **Emotion Ranges:**\n"
@@ -564,7 +585,7 @@ if page == "Admin Dashboard":
                 f"{emo} weight", 0.0, 2.0, st.session_state.EMOTION_WEIGHTS.get(emo, IDEAL_EMOTION_WEIGHTS[emo]), 0.1, key=f"emo_{emo}"
             )
         with col2:
-            if st.button("Reset", key=f"reset_{emo}"):
+            if st.button("Reset to Default ", key=f"reset_{emo}"):
                 st.session_state.EMOTION_WEIGHTS[emo] = IDEAL_EMOTION_WEIGHTS[emo]
                 save_settings()
                 st.rerun()
@@ -577,7 +598,7 @@ if page == "Admin Dashboard":
                 f"{comp} weight", 0.0, 1.0, st.session_state.STRESS_WEIGHTS[comp], 0.05, key=f"comp_{comp}"
             )
         with col2:
-            if st.button("Reset", key=f"reset_{comp}"):
+            if st.button("Reset to Default ", key=f"reset_{comp}"):
                 st.session_state.STRESS_WEIGHTS[comp] = IDEAL_STRESS_WEIGHTS[comp]
                 save_settings()
                 st.rerun()
@@ -594,7 +615,7 @@ if page == "Admin Dashboard":
                 f"{emo} % range", 0.0, 1.0, (low, high), 0.05, key=f"range_{emo}"
             )
         with col2:
-            if st.button("Reset", key=f"reset_range_{emo}"):
+            if st.button("Reset to Default ", key=f"reset_range_{emo}"):
                 st.session_state.EXPECTED_RANGES[emo] = IDEAL_EXPECTED_RANGES[emo]
                 save_settings()
                 st.rerun()
