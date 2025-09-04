@@ -42,3 +42,7 @@ gcloud run deploy emotion-api --image gcr.io/PROJECT_ID/emotion-api --platform m
 
 Update `frontend/app.py` to point to the deployed API URL.
 
+## Videeo Link
+Here is the link to demonstration video
+https://drive.google.com/file/d/1PJos6Xp5AD_RpzDDJsub0w7N_pqkZ10S/view?usp=sharing
+

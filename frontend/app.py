@@ -15,6 +15,7 @@ from docx.shared import RGBColor
 # =========================
 BACKEND_URL = "http://localhost:8000/predict"
 ROLLING_WINDOW = 15
+
 FPS = 15
 SETTINGS_FILE = "admin_settings.json"
 
@@ -38,6 +39,7 @@ IDEAL_EXPECTED_RANGES = {
     "Surprise": (0.00, 0.05),
     "Negatives": (0.00, 0.10)
 }
+
 
 # =========================
 # SETTINGS PERSISTENCE
