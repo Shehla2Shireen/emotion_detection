@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Emotion Chatbot</title>
+  <style>
+    body { font-family: Arial; display: flex; gap: 20px; padding: 20px; }
+    #webcam, #chat { flex: 1; }
+    video { width: 100%; border: 1px solid #ccc; }
+    #conversation { max-height: 400px; overflow-y: auto; margin-top: 10px; }
+  </style>
+</head>
+<body>
+
+  <!-- Webcam Section -->
+  <div id="webcam">
+    <h2>🎥 Webcam</h2>
+    <video id="video" autoplay></video>
+    <p>Current Emotion: <span id="emotion">Unknown</span></p>
+  </div>
+
+  <!-- Chat Section -->
+  <div id="chat">
+    <h2>💬 Chatbot</h2>
+    <div id="conversation"></div>
+  </div>
+
+<script>
+const BACKEND_URL = "http://localhost:8000";
+
+const video = document.getElementById("video");
+const emotionSpan = document.getElementById("emotion");
+const conversationDiv = document.getElementById("conversation");
+
+let currentEmotion = "Unknown";
+
+// ===== Webcam =====
+async function startWebcam() {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+    video.srcObject = stream;
+  } catch (err) {
+    alert("Error accessing webcam: " + err);
+  }
+}
+
+startWebcam();
+
+// ===== Capture Frame =====
+async function captureFrame() {
+  const canvas = document.createElement("canvas");
+  canvas.width = video.videoWidth;
+  canvas.height = video.videoHeight;
+  const ctx = canvas.getContext("2d");
+  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+  return new Promise(resolve => {
+    canvas.toBlob(blob => resolve(blob), "image/jpeg");
+  });
+}
+
+// ===== Add message to conversation =====
+function addMessage(sender, text) {
+  const div = document.createElement("div");
+  div.innerHTML = `<b>${sender}:</b> ${text}`;
+  conversationDiv.appendChild(div);
+  conversationDiv.scrollTop = conversationDiv.scrollHeight;
+}
+
+// ===== Automatic Speech Recognition Loop =====
+function recognizeSpeechLoop() {
+  const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+  recognition.lang = "en-US";
+  recognition.interimResults = false;
+  recognition.continuous = false;
+
+  recognition.onresult = async event => {
+    const userText = event.results[0][0].transcript;
+    addMessage("You", userText);
+
+    // Capture webcam frame
+    const blob = await captureFrame();
+    const formData = new FormData();
+    formData.append("file", blob, "frame.jpg");
+
+    // Detect emotion
+    try {
+      const res = await fetch(`${BACKEND_URL}/detect_emotion`, { method: "POST", body: formData });
+      const data = await res.json();
+      currentEmotion = data.emotion || "Unknown";
+      emotionSpan.innerText = currentEmotion;
+    } catch (err) {
+      console.error("Emotion detection error:", err);
+    }
+
+    // Chatbot reply
+    try {
+      const chatRes = await fetch(`${BACKEND_URL}/chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: `message=${encodeURIComponent(userText)}`
+      });
+      const chatData = await chatRes.json();
+      const botReply = chatData.reply || "No reply";
+      addMessage("Bot", `${botReply} (Emotion: ${currentEmotion})`);
+
+      // Speak the bot reply and wait until finished before restarting recognition
+      await new Promise(resolve => {
+        const utterance = new SpeechSynthesisUtterance(botReply);
+        utterance.onend = resolve;
+        window.speechSynthesis.speak(utterance);
+      });
+
+    } catch (err) {
+      console.error("Chat error:", err);
+    }
+  };
+
+  recognition.onerror = event => {
+    console.error("Speech recognition error:", event.error);
+  };
+
+  recognition.onend = () => {
+    // Restart recognition after short delay to prevent TTS loopback
+    setTimeout(recognizeSpeechLoop, 200);
+  };
+
+  recognition.start();
+}
+
+// ===== Start automatic listening =====
+recognizeSpeechLoop();
+
+</script>
+</body>
+</html>
