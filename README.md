@@ -1,111 +1,186 @@
-# 🎭 Facial Emotion & Stress Detection System
-**AI-powered interview analysis tool using Deep Learning, FastAPI, Streamlit, and Weights & Biases (W&B)**  
+InterviewSense AI
+A comprehensive AI-powered interview analysis tool that provides real-time feedback on candidate performance by analyzing emotions, eye contact, and stress levels during interviews.
 
-![Python](https://img.shields.io/badge/Python-3.10-blue)
-![TensorFlow](https://img.shields.io/badge/TensorFlow-2.15-orange)
-![FastAPI](https://img.shields.io/badge/FastAPI-Backend-green)
-![Streamlit](https://img.shields.io/badge/Streamlit-Dashboard-red)
-![WandB](https://img.shields.io/badge/Weights&Biases-Tracking-yellow)
+Overview
+InterviewSense AI combines computer vision and machine learning to evaluate interview performance through:
 
----
+Real-time emotion detection (Angry, Happy, Sad, Surprise, Neutral, Disgust, Fear)
 
-## 📌 Overview
-This project detects **7 basic facial emotions** in real-time and calculates a **stress level** based on emotional patterns.
-It can be used for **interview evaluation**, **workplace productivity monitoring**, and **HR analytics**.
+Eye contact tracking with percentage-based scoring
 
----
+Stress level analysis based on negative emotion dominance
 
-## 🚀 Features
-✅ Real-time emotion detection from webcam or uploaded videos  
-✅ Supports **7 emotions** → `Angry`, `Disgust`, `Fear`, `Happy`, `Sad`, `Surprise`, `Neutral`  
-✅ Stress level estimation based on detected emotions  
-✅ W&B artifact integration for model loading  
-✅ Streamlit dashboard for interview reports  
-✅ REST API using FastAPI for integration with other apps  
+Comprehensive reporting with actionable feedback
 
----
+Architecture
+The system consists of two main components:
 
-## 🧠 Model Details
-- **Architecture** → CNN + Dense layers  
-- **Input Shape** → `48x48x1` grayscale images  
-- **Output Classes** → 7 emotions  
-- **Training Dataset** → FER-2013  
-- **Tracked with** → [Weights & Biases](https://wandb.ai/)
+Frontend (Streamlit Application)
+Real-time webcam feed processing
 
-**Loading the Model from W&B Artifact**:
-```python
-import wandb
-import tensorflow as tf
+Live dashboard with metrics visualization
 
-wandb.login()
-artifact = wandb.use_artifact(
-    'shehlashireen03-atomcamp/emotion_detection/model-hopeful-meadow-1:v12', 
-    type='model'
-)
-artifact_dir = artifact.download()
-model = tf.keras.models.load_model(artifact_dir)
-```
+Video upload and analysis capability
 
----
+Admin configuration panel
 
-## 📊 Stress Level Calculation
-**Formula**:
-\[
-Stress Level = \frac{(1.0*Angry + 0.9*Fear + 0.8*Sad + 0.5*Disgust)}{(1.2*Happy + 0.8*Neutral + 1)} \times 100
-\]
+Automated report generation in Word format
 
-**Reference:** Inspired by  
-*"Stress Detection through Compound Facial Expressions Using Neural Networks"*  
-[DOI: 10.55549/epess.807](https://doi.org/10.55549/epess.807)
+Backend (FastAPI Server)
+TensorFlow emotion detection model
 
----
+MediaPipe for facial landmark detection
 
-## 🖥️ Running the Project
+Eye contact estimation algorithms
 
-### **1️⃣ Install Dependencies**
-```bash
-pip install -r requirements.txt
-```
+Head movement tracking
 
-### **2️⃣ Run the FastAPI Backend**
-```bash
-cd backend
-uvicorn app:app --reload
-```
-**API Endpoint** → `http://127.0.0.1:8000/predict`
+REST API endpoint for image processing
 
-### **3️⃣ Run the Streamlit Dashboard**
-```bash
-cd dashboard
-streamlit run streamlit_app.py
-```
-**Dashboard URL** → `http://localhost:8501`
+Key Features
+Multi-Page Interface:
 
-### **4️⃣ Predict Emotions via API**
-```python
-import requests
+Interview Dashboard: Real-time webcam analysis
 
-url = "http://127.0.0.1:8000/predict"
-files = {'file': open("sample_image.jpg", "rb")}
-response = requests.post(url, files=files)
-print(response.json())
-```
+Video Upload: Process recorded interviews
 
----
+Admin Dashboard: Configure evaluation parameters
 
-## 🛠️ Tech Stack
-- **Backend** → FastAPI
-- **Frontend** → Streamlit
-- **Model Tracking** → Weights & Biases
-- **Deep Learning** → TensorFlow / Keras
-- **Database (optional)** → PostgreSQL / MongoDB
-- **Deployment** → Docker + Cloud-ready
+Smart Analysis:
 
----
+15-frame rolling average for smooth metrics
 
-## 📌 Future Enhancements
-- ✅ Integrate **voice tone analysis** for better stress detection  
-- ✅ Multi-user dashboard for HR analytics  
-- ✅ Real-time analytics for group interviews  
-- ✅ Optimize inference speed using TensorRT  
+Emotion dominance tracking (not just averages)
 
+Configurable expected ranges for different emotions
+
+Binary stress classification (High/Low) based on negative emotion prevalence
+
+Professional Reporting:
+
+Automated Microsoft Word report generation
+
+Color-coded performance indicators
+
+Detailed metrics and compliance tables
+
+Personalized recommendations for improvement
+
+Installation & Setup
+Prerequisites
+Python 3.8+
+
+Webcam (for live analysis)
+
+Stable internet connection (for model download)
+
+Backend Setup
+bash
+# Install Python dependencies
+pip install fastapi uvicorn tensorflow mediapipe opencv-python pillow python-multipart gdown numpy
+
+# Start the backend server
+uvicorn main:app --host 0.0.0.0 --port 8000
+Frontend Setup
+bash
+# Install Python dependencies
+pip install streamlit opencv-python requests python-docx
+
+# Launch the Streamlit application
+streamlit run app.py
+Usage
+Start the backend server on port 8000
+
+Launch the frontend application
+
+Navigate between:
+
+Interview Dashboard: For live webcam analysis
+
+Video Upload: For processing recorded interviews
+
+Admin Dashboard: To configure evaluation parameters
+
+View real-time metrics including:
+
+Current dominant emotion
+
+Eye contact percentage
+
+Stress level classification
+
+Emotion distribution compliance
+
+Download comprehensive reports in Word format after session completion
+
+Configuration
+The Admin Dashboard allows customization of:
+
+Expected emotion ranges (Neutral, Happy, Surprise, Negatives)
+
+Ideal performance thresholds
+
+Evaluation parameters
+
+Technical Details
+Emotion Model: Pre-trained TensorFlow model downloaded from Google Drive
+
+Face Detection: Haar Cascade classifier
+
+Eye Tracking: MediaPipe Face Mesh for precise iris detection
+
+Stress Calculation: Based on percentage of frames where negative emotions are dominant
+
+Data Persistence: JSON-based configuration saving
+
+API Endpoints
+POST /predict: Accepts image files and returns emotion predictions, eye contact percentage, and head movement metrics
+
+Output Metrics
+Emotion Analysis: Confidence scores for all 7 emotions
+
+Eye Contact: Percentage score (0-100%) with performance categorization
+
+Stress Level: Binary classification (High/Low) based on negative emotion prevalence
+
+Overall Interview Status: Composite score (Good/Average/Bad) based on multiple factors
+
+File Structure
+text
+interviewsense-ai/
+├── app.py                 # Streamlit frontend application
+├── main.py               # FastAPI backend server
+├── admin_settings.json   # Configuration storage
+├── haarcascade_frontalface_default.xml  # Face detection model
+└── artifacts/
+    └── model-hopeful-meadow-1v12/  # Emotion detection model
+Troubleshooting
+Webcam not working: Check camera permissions and ensure no other application is using the camera
+
+Backend connection error: Verify the backend server is running on port 8000
+
+Model download issues: Check internet connection and verify Google Drive file accessibility
+
+Performance issues: Reduce video resolution or close other resource-intensive applications
+
+Limitations
+Requires good lighting conditions for accurate analysis
+
+Works best with front-facing camera positions
+
+May have reduced accuracy with glasses or extreme facial expressions
+
+Performance depends on hardware capabilities
+
+Future Enhancements
+Multi-person interview analysis
+
+Audio sentiment analysis integration
+
+Advanced analytics and trend tracking
+
+Cloud-based processing for improved performance
+
+Mobile application version
+
+This tool is designed for HR professionals, interview coaches, and candidates looking to improve their interview performance through data-driven feedback.
