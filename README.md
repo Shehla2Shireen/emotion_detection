@@ -1,48 +1,111 @@
-# Emotion Detection — End-to-End (TF/Keras + FastAPI + Streamlit + W&B)
+# 🎭 Facial Emotion & Stress Detection System
+**AI-powered interview analysis tool using Deep Learning, FastAPI, Streamlit, and Weights & Biases (W&B)**  
 
-This project turns your notebook into a production-ready pipeline:
+![Python](https://img.shields.io/badge/Python-3.10-blue)
+![TensorFlow](https://img.shields.io/badge/TensorFlow-2.15-orange)
+![FastAPI](https://img.shields.io/badge/FastAPI-Backend-green)
+![Streamlit](https://img.shields.io/badge/Streamlit-Dashboard-red)
+![WandB](https://img.shields.io/badge/Weights&Biases-Tracking-yellow)
 
-- **Training**: TensorFlow/Keras on FER2013 (CSV). W&B tracks runs and saves model artifacts.
-- **Backend**: FastAPI API for inference (accepts image upload or base64).
-- **Frontend**: Streamlit UI to upload an image and view prediction by calling the API.
-- **Deployment**: Ready for Google Cloud Run (backend). Streamlit can be deployed on Streamlit Cloud or Cloud Run.
+---
 
-## Quickstart (Local)
+## 📌 Overview
+This project detects **7 basic facial emotions** in real-time and calculates a **stress level** based on emotional patterns.
+It can be used for **interview evaluation**, **workplace productivity monitoring**, and **HR analytics**.
 
-```bash
-python -m venv .venv
-.venv/Scripts/activate   # Windows
-# Or: source .venv/bin/activate   # macOS/Linux
+---
 
-pip install -r training/requirements.txt
-pip install -r backend/requirements.txt
-pip install -r frontend/requirements.txt
+## 🚀 Features
+✅ Real-time emotion detection from webcam or uploaded videos  
+✅ Supports **7 emotions** → `Angry`, `Disgust`, `Fear`, `Happy`, `Sad`, `Surprise`, `Neutral`  
+✅ Stress level estimation based on detected emotions  
+✅ W&B artifact integration for model loading  
+✅ Streamlit dashboard for interview reports  
+✅ REST API using FastAPI for integration with other apps  
 
-# 1) Train (logs to W&B; saves model as artifact)
-python training/train.py --csv_path path/to/fer2013.csv --project ml-end-to-end --run_name baseline-v1
+---
 
-# 2) Run API
-uvicorn backend.main:app --host 0.0.0.0 --port 8000
+## 🧠 Model Details
+- **Architecture** → CNN + Dense layers  
+- **Input Shape** → `48x48x1` grayscale images  
+- **Output Classes** → 7 emotions  
+- **Training Dataset** → FER-2013  
+- **Tracked with** → [Weights & Biases](https://wandb.ai/)
 
-# 3) Run UI
-streamlit run frontend/app.py
+**Loading the Model from W&B Artifact**:
+```python
+import wandb
+import tensorflow as tf
+
+wandb.login()
+artifact = wandb.use_artifact(
+    'shehlashireen03-atomcamp/emotion_detection/model-hopeful-meadow-1:v12', 
+    type='model'
+)
+artifact_dir = artifact.download()
+model = tf.keras.models.load_model(artifact_dir)
 ```
 
-### Environment
+---
 
-- Python 3.10+ recommended
-- Set W&B once: `wandb login`
+## 📊 Stress Level Calculation
+**Formula**:
+\[
+Stress Level = \frac{(1.0*Angry + 0.9*Fear + 0.8*Sad + 0.5*Disgust)}{(1.2*Happy + 0.8*Neutral + 1)} \times 100
+\]
 
-## Deploy to Google Cloud Run (Backend)
+**Reference:** Inspired by  
+*"Stress Detection through Compound Facial Expressions Using Neural Networks"*  
+[DOI: 10.55549/epess.807](https://doi.org/10.55549/epess.807)
 
+---
+
+## 🖥️ Running the Project
+
+### **1️⃣ Install Dependencies**
 ```bash
-gcloud builds submit --tag gcr.io/PROJECT_ID/emotion-api ./backend
-gcloud run deploy emotion-api --image gcr.io/PROJECT_ID/emotion-api --platform managed --allow-unauthenticated --region YOUR_REGION
+pip install -r requirements.txt
 ```
 
-Update `frontend/app.py` to point to the deployed API URL.
+### **2️⃣ Run the FastAPI Backend**
+```bash
+cd backend
+uvicorn app:app --reload
+```
+**API Endpoint** → `http://127.0.0.1:8000/predict`
 
-## Videeo Link
-Here is the link to demonstration video
-https://drive.google.com/file/d/1PJos6Xp5AD_RpzDDJsub0w7N_pqkZ10S/view?usp=sharing
+### **3️⃣ Run the Streamlit Dashboard**
+```bash
+cd dashboard
+streamlit run streamlit_app.py
+```
+**Dashboard URL** → `http://localhost:8501`
+
+### **4️⃣ Predict Emotions via API**
+```python
+import requests
+
+url = "http://127.0.0.1:8000/predict"
+files = {'file': open("sample_image.jpg", "rb")}
+response = requests.post(url, files=files)
+print(response.json())
+```
+
+---
+
+## 🛠️ Tech Stack
+- **Backend** → FastAPI
+- **Frontend** → Streamlit
+- **Model Tracking** → Weights & Biases
+- **Deep Learning** → TensorFlow / Keras
+- **Database (optional)** → PostgreSQL / MongoDB
+- **Deployment** → Docker + Cloud-ready
+
+---
+
+## 📌 Future Enhancements
+- ✅ Integrate **voice tone analysis** for better stress detection  
+- ✅ Multi-user dashboard for HR analytics  
+- ✅ Real-time analytics for group interviews  
+- ✅ Optimize inference speed using TensorRT  
 
